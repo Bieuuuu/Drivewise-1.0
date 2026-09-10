@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profile, financial goals and platform parameters of the driver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "city": { "type": "string", "maxLength": 100 },
+        "vehicleModel": { "type": "string", "maxLength": 100 },
+        "vehiclePlate": { "type": "string", "maxLength": 50 },
+        "monthlyGoal": { "type": "number" },
+        "dailyGoal": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    },
+    "WorkSession": {
+      "title": "WorkSession",
+      "description": "A single driving shift or work session completed by the driver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 20 },
+        "startTime": { "type": "string", "maxLength": 40 },
+        "endTime": { "type": "string", "maxLength": 40 },
+        "income": { "type": "number" },
+        "distanceKm": { "type": "number" },
+        "status": { "type": "string", "maxLength": 20 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "date", "income", "distanceKm"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operating or vehicle maintenance expense logged by driver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 20 },
+        "category": { "type": "string", "maxLength": 60 },
+        "amount": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "userId", "date", "category", "amount"]
+    },
+    "FuelEntry": {
+      "title": "FuelEntry",
+      "description": "Fuel station refill record for autonomy and mileage calculation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 20 },
+        "liters": { "type": "number" },
+        "pricePerLiter": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "odometer": { "type": "number" },
+        "fuelType": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "userId", "date", "liters", "totalCost", "fuelType"]
+    },
+    "CopilotRide": {
+      "title": "CopilotRide",
+      "description": "Ride evaluation analyzed by the driver copilot assistant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 40 },
+        "platform": { "type": "string", "maxLength": 40 },
+        "grossValue": { "type": "number" },
+        "totalKm": { "type": "number" }
+      },
+      "required": ["id", "userId", "platform", "grossValue", "totalKm"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores core driver profile and preferences"
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "WorkSession",
+      "description": "Stores daily shift earnings and km driven"
+    },
+    "/users/{userId}/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Stores maintenance, cleaning, insurance and other expenses"
+    },
+    "/users/{userId}/fuelEntries/{fuelId}": {
+      "schema": "FuelEntry",
+      "description": "Stores fuel fillups with odometer and fuel prices"
+    },
+    "/users/{userId}/rides/{rideId}": {
+      "schema": "CopilotRide",
+      "description": "Stores evaluated ride offers from Uber/99/inDrive"
+    }
+  }
+}

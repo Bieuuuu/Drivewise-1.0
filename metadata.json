@@ -1,0 +1,10 @@
+{
+  "name": "DriveWise",
+  "description": "Aplicativo profissional para motoristas de aplicativo: Copiloto de Corridas em tempo real (Ride Copilot), avaliação de rentabilidade para Uber, 99 e InDrive, controle de jornadas, custos, metas e sincronização em nuvem segura com Firebase.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

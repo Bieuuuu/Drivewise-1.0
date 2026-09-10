@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Security helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Connection health check route
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Driver user profile
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) && isValidId(userId)
+        && request.resource.data.name is string && request.resource.data.name.size() <= 100
+        && request.resource.data.email is string && request.resource.data.email.size() <= 150;
+
+      allow update: if isOwner(userId) && isValidId(userId)
+        && request.resource.data.name is string && request.resource.data.name.size() <= 100
+        && request.resource.data.email is string && request.resource.data.email.size() <= 150;
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Subcollection: Sessions
+      match /sessions/{sessionId} {
+        allow get, list: if isOwner(userId);
+        
+        allow create: if isOwner(userId) && isValidId(sessionId)
+          && request.resource.data.userId == userId
+          && request.resource.data.date is string && request.resource.data.date.size() <= 30
+          && request.resource.data.income is number
+          && request.resource.data.distanceKm is number;
+
+        allow update: if isOwner(userId) && isValidId(sessionId)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.income is number
+          && request.resource.data.distanceKm is number;
+
+        allow delete: if isOwner(userId) && isValidId(sessionId);
+      }
+
+      // Subcollection: Expenses
+      match /expenses/{expenseId} {
+        allow get, list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(expenseId)
+          && request.resource.data.userId == userId
+          && request.resource.data.category is string && request.resource.data.category.size() <= 60
+          && request.resource.data.amount is number;
+
+        allow update: if isOwner(userId) && isValidId(expenseId)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.amount is number;
+
+        allow delete: if isOwner(userId) && isValidId(expenseId);
+      }
+
+      // Subcollection: Fuel Entries
+      match /fuelEntries/{fuelId} {
+        allow get, list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(fuelId)
+          && request.resource.data.userId == userId
+          && request.resource.data.liters is number
+          && request.resource.data.totalCost is number
+          && request.resource.data.fuelType is string && request.resource.data.fuelType.size() <= 40;
+
+        allow update: if isOwner(userId) && isValidId(fuelId)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.liters is number
+          && request.resource.data.totalCost is number;
+
+        allow delete: if isOwner(userId) && isValidId(fuelId);
+      }
+
+      // Subcollection: Copilot Rides
+      match /rides/{rideId} {
+        allow get, list: if isOwner(userId);
+
+        allow create: if isOwner(userId) && isValidId(rideId)
+          && request.resource.data.userId == userId
+          && request.resource.data.platform is string && request.resource.data.platform.size() <= 40
+          && request.resource.data.grossValue is number
+          && request.resource.data.totalKm is number;
+
+        allow update: if isOwner(userId) && isValidId(rideId)
+          && request.resource.data.userId == resource.data.userId;
+
+        allow delete: if isOwner(userId) && isValidId(rideId);
+      }
+    }
+  }
+}
