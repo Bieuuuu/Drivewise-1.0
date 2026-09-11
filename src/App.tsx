@@ -144,7 +144,6 @@ function DriveWiseApp() {
   if (!firebaseUser) {
     return (
       <AuthScreen
-        onBackToLanding={() => setViewMode('landing')}
         onSuccess={() => {
           if (!user.hasCompletedOnboarding) {
             setIsOnboardingOpen(true);

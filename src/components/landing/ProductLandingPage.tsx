@@ -22,6 +22,11 @@ import {
   ChevronRight,
   ExternalLink,
   RotateCcw,
+  X,
+  Share,
+  Plus,
+  FileDown,
+  Check,
 } from 'lucide-react';
 import { DriveWiseLogo } from '../DriveWiseLogo';
 import { AndroidLogo, AppleLogo } from '../BrandLogos';
@@ -48,6 +53,8 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
+  const [apkDownloaded, setApkDownloaded] = useState<boolean>(false);
+  const [isPwaExpanded, setIsPwaExpanded] = useState<boolean>(false);
 
   // Accessible IDs for inputs
   const dailyKmInputId = useId();
@@ -111,6 +118,26 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
     }
     // Always open the explicit download modal so the user has immediate visual steps
     setIsInstallModalOpen(true);
+  };
+
+  const APK_DOWNLOAD_URL = 'https://github.com/Bieuuu/drivewise-1-0/releases/latest/download/drivewise.apk';
+
+  const handleDownloadApk = () => {
+    setApkDownloaded(true);
+    try {
+      localStorage.setItem('drivewise_app_downloaded', 'true');
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      const link = document.createElement('a');
+      link.href = APK_DOWNLOAD_URL;
+      link.download = 'drivewise.apk';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   // Real-world operational financial model
@@ -1323,152 +1350,273 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
         </div>
       )}
 
-      {/* 14. INSTALL / DOWNLOAD APP MODAL */}
+      {/* 14. INSTALL / DOWNLOAD APP WIZARD MODAL */}
       {isInstallModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#0C0F14] border border-white/[0.12] rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+          <div className="bg-[#0B0E14] border border-white/[0.14] rounded-3xl max-w-md w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative animate-fadeIn">
+            {/* Top Glowing Ambient Line */}
+            <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+
             {/* Modal Header */}
-            <div className="p-5 border-b border-white/[0.08] flex items-center justify-between bg-[#0A0D12]">
+            <div className="p-5 border-b border-white/[0.08] flex items-center justify-between bg-[#080B10]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                  <Download className="w-5 h-5 text-emerald-400" />
-                </div>
+                <DriveWiseLogo className="w-9 h-9" />
                 <div>
-                  <h3 className="text-base font-bold text-white">Baixar Aplicativo DriveWise</h3>
-                  <p className="text-xs text-slate-400">Instalação direta e sem loja de apps</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-white tracking-tight">Instalar DriveWise</h3>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase">
+                      v2.5
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">Copiloto Inteligente para Uber & 99</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsInstallModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 flex items-center justify-center text-sm cursor-pointer"
+                className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Fechar janela"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-5">
+            <div className="p-5 overflow-y-auto space-y-4">
               {/* Platform Selector */}
-              <div className="grid grid-cols-2 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+              <div className="grid grid-cols-2 p-1 rounded-2xl bg-black/60 border border-white/[0.08]">
                 <button
                   type="button"
                   onClick={() => setInstallDeviceTab('android')}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                     installDeviceTab === 'android'
-                      ? 'bg-emerald-500 text-black shadow-md'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
+                      : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Android (Chrome)
+                  <AndroidLogo className="w-4 h-4" />
+                  <span>Android (APK)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setInstallDeviceTab('ios')}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                     installDeviceTab === 'ios'
-                      ? 'bg-emerald-500 text-black shadow-md'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-white text-black shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  iPhone (Safari)
+                  <AppleLogo className="w-4 h-4" />
+                  <span>iPhone (iOS)</span>
                 </button>
               </div>
 
               {/* Instructions per device */}
               {installDeviceTab === 'android' ? (
-                <div className="space-y-3.5 bg-black/40 p-4 rounded-2xl border border-white/[0.06] text-xs text-slate-300">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
-                      1
+                <div className="space-y-3.5">
+                  {/* Primary Option: Native Android APK */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-b from-[#111722] to-[#0A0D12] border border-emerald-500/35 space-y-3.5 shadow-xl">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wide">
+                          Pacote Oficial Nativo
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-300 bg-white/[0.06] px-2 py-0.5 rounded-md border border-white/[0.08]">
+                        12.8 MB • Android 8.0+
+                      </span>
                     </div>
+
                     <div>
-                      <strong className="text-white block">Abra o menu do Chrome</strong>
-                      Toque nos <strong>três pontinhos (⋮)</strong> no canto superior direito da tela do seu navegador.
+                      <h4 className="text-sm sm:text-base font-black text-white leading-tight">
+                        Baixar Arquivo APK (.apk)
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        Inclui <strong>Sobreposição de Tela</strong> (bolha flutuante sobre a Uber e 99) e leitura automática de ganhos.
+                      </p>
+                    </div>
+
+                    {/* Main Download Button */}
+                    <button
+                      type="button"
+                      id="btn-download-direct-apk"
+                      onClick={handleDownloadApk}
+                      className="w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
+                    >
+                      {apkDownloaded ? (
+                        <>
+                          <Check className="w-4 h-4 stroke-[3] text-black shrink-0" />
+                          <span>Download Iniciado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 stroke-[2.5] text-black shrink-0" />
+                          <span>Baixar APK Direto (.apk)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {apkDownloaded && (
+                      <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Arquivo sendo baixado. Abra suas notificações para instalar!</span>
+                      </div>
+                    )}
+
+                    {/* Trust Markers */}
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/[0.06] text-[10px] text-slate-400 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Play Protect</span>
+                      </div>
+                      <div className="flex items-center justify-center gap-1 border-x border-white/[0.06]">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Anti-Ban</span>
+                      </div>
+                      <div className="flex items-center justify-center gap-1">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Modo Offline</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
-                      2
-                    </div>
-                    <div>
-                      <strong className="text-white block">Toque em "Instalar aplicativo"</strong>
-                      Ou "Adicionar à tela inicial". Uma janela de confirmação oficial do Android será exibida.
+                  {/* 3 Quick Steps on Android */}
+                  <div className="space-y-2.5 bg-black/35 p-3.5 rounded-2xl border border-white/[0.06]">
+                    <span className="text-[11px] font-bold text-slate-300 block uppercase tracking-wider">
+                      Como Instalar no Celular
+                    </span>
+                    <div className="space-y-2 text-xs text-slate-300">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center shrink-0 text-[11px] border border-emerald-500/30">
+                          1
+                        </div>
+                        <div className="leading-snug">
+                          <strong className="text-white">Baixar APK:</strong> Toque no botão acima e confirme o download do arquivo.
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center shrink-0 text-[11px] border border-emerald-500/30">
+                          2
+                        </div>
+                        <div className="leading-snug">
+                          <strong className="text-white">Instalar:</strong> Abra suas notificações e toque no arquivo baixado para instalar.
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center shrink-0 text-[11px] border border-emerald-500/30">
+                          3
+                        </div>
+                        <div className="leading-snug">
+                          <strong className="text-white">Sobreposição:</strong> Na primeira abertura, autorize a bolha para flutuar sobre a Uber e 99.
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
-                      3
-                    </div>
-                    <div>
-                      <strong className="text-white block">Pronto! O ícone é criado no celular</strong>
-                      O app funcionará com janela flutuante, tela cheia e modo offline-first.
-                    </div>
+                  {/* Secondary Option: PWA Web Shortcut */}
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsPwaExpanded(!isPwaExpanded)}
+                      className="w-full text-[11px] text-slate-400 hover:text-slate-200 flex items-center justify-between py-1.5 px-1 cursor-pointer transition-colors"
+                    >
+                      <span>Prefere usar versão web leve no Chrome?</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isPwaExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isPwaExpanded && (
+                      <div className="mt-2 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-slate-300 space-y-2 animate-fadeIn">
+                        <p className="text-[11px] text-slate-400">
+                          Toque nos <strong>três pontinhos (⋮)</strong> no topo do Chrome e selecione <strong>"Instalar aplicativo"</strong> ou "Adicionar à tela inicial".
+                        </p>
+                        {deferredPrompt && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deferredPrompt.prompt();
+                              deferredPrompt.userChoice.then((cr: any) => {
+                                if (cr?.outcome === 'accepted') {
+                                  try {
+                                    localStorage.setItem('drivewise_app_downloaded', 'true');
+                                  } catch {}
+                                  if (onEnterApp) onEnterApp();
+                                }
+                              });
+                            }}
+                            className="w-full py-2 rounded-lg bg-white/[0.1] hover:bg-white/[0.15] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Instalar Atalho Web no Chrome</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3.5 bg-black/40 p-4 rounded-2xl border border-white/[0.06] text-xs text-slate-300">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
-                      1
+                <div className="space-y-3.5">
+                  <div className="p-4 rounded-2xl bg-gradient-to-b from-[#111722] to-[#0A0D12] border border-white/[0.1] space-y-3 shadow-xl">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                        <AppleLogo className="w-4 h-4 text-white" /> iOS Safari
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-300 bg-white/[0.06] px-2 py-0.5 rounded-md border border-white/[0.08]">
+                        iOS 14.0+
+                      </span>
                     </div>
-                    <div>
-                      <strong className="text-white block">Toque em Compartilhar no Safari</strong>
-                      No rodapé do Safari, clique no ícone quadrado com uma <strong>seta apontando para cima (↑)</strong>.
-                    </div>
-                  </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
-                      2
-                    </div>
                     <div>
-                      <strong className="text-white block">Selecione "Adicionar à Tela de Início"</strong>
-                      Role o menu para baixo e toque na opção com o símbolo de mais (+).
+                      <h4 className="text-sm sm:text-base font-black text-white leading-tight">
+                        Adicionar DriveWise no iPhone
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        No iOS, o app funciona em tela cheia com alta performance direto pelo Safari.
+                      </p>
                     </div>
-                  </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
-                      3
-                    </div>
-                    <div>
-                      <strong className="text-white block">Toque em "Adicionar"</strong>
-                      O ícone do DriveWise aparecerá imediatamente na grade de aplicativos do seu iPhone.
+                    <div className="space-y-2 pt-2 border-t border-white/[0.06] text-xs text-slate-300">
+                      <div className="flex items-start gap-3 bg-black/40 p-2.5 rounded-xl border border-white/[0.04]">
+                        <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                          <Share className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="leading-snug">
+                          <strong className="text-white block">1. Toque em Compartilhar</strong>
+                          Na barra inferior do Safari, clique no ícone quadrado com a seta para cima (↑).
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-black/40 p-2.5 rounded-xl border border-white/[0.04]">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <Plus className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="leading-snug">
+                          <strong className="text-white block">2. Adicionar à Tela de Início</strong>
+                          Role o menu para baixo e selecione "Adicionar à Tela de Início".
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 bg-black/40 p-2.5 rounded-xl border border-white/[0.04]">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <Check className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="leading-snug">
+                          <strong className="text-white block">3. Confirmar "Adicionar"</strong>
+                          No canto superior direito, toque em Adicionar para criar o app no seu iPhone.
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Try trigger prompt again if available */}
-              {deferredPrompt && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    deferredPrompt.prompt();
-                    deferredPrompt.userChoice.then((cr: any) => {
-                      if (cr?.outcome === 'accepted') {
-                        try {
-                          localStorage.setItem('drivewise_app_downloaded', 'true');
-                        } catch {}
-                        if (onEnterApp) onEnterApp();
-                      }
-                    });
-                  }}
-                  className="w-full h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Instalar Agora no Aparelho</span>
-                </button>
               )}
             </div>
 
             {/* Modal Footer: Confirmed download and launch app */}
-            <div className="p-4 border-t border-white/[0.08] bg-[#0A0D12] flex flex-col sm:flex-row items-center justify-between gap-3">
-              <span className="text-[11px] text-slate-400 text-center sm:text-left">
-                Já baixou ou instalou na tela inicial?
+            <div className="p-4 border-t border-white/[0.08] bg-[#080B10] flex items-center justify-between gap-3">
+              <span className="text-[11px] text-slate-400">
+                Já concluiu a instalação?
               </span>
               <button
                 type="button"
@@ -1479,7 +1627,7 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                   setIsInstallModalOpen(false);
                   if (onEnterApp) onEnterApp();
                 }}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white/[0.1] hover:bg-white/[0.15] text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/[0.1] cursor-pointer transition-all"
+                className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] active:scale-[0.98] text-white font-bold text-xs flex items-center gap-2 border border-white/[0.1] cursor-pointer transition-all"
               >
                 <span>Abrir Aplicativo</span>
                 <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />

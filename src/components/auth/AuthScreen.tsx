@@ -1,31 +1,22 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { useDriveWise } from '../../context/DriveWiseContext';
 import { DriveWiseLogo } from '../DriveWiseLogo';
 import {
-  ShieldCheck,
-  Zap,
-  Lock,
   Mail,
   KeyRound,
   User,
   ArrowRight,
-  ArrowLeft,
-  Sparkles,
-  CheckCircle2,
-  AlertCircle,
   Eye,
   EyeOff,
-  Smartphone,
-  ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 
 interface AuthScreenProps {
   onSuccess?: () => void;
-  onBackToLanding?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLanding }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   const {
     loginWithGoogle,
     loginWithEmailPassword,
@@ -48,7 +39,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
     const result = await loginWithGoogle();
     setSubmitting(false);
     if (!result.success) {
-      setErrorMessage(result.error || 'Falha ao autenticar com Google.');
+      setErrorMessage(result.error || 'Não foi possível completar o login com o Google.');
     } else {
       if (onSuccess) onSuccess();
     }
@@ -59,22 +50,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
     setErrorMessage(null);
 
     if (!email.trim()) {
-      setErrorMessage('Por favor, informe seu e-mail.');
+      setErrorMessage('Informe seu e-mail para continuar.');
       return;
     }
 
     if (!password) {
-      setErrorMessage('Por favor, informe sua senha.');
+      setErrorMessage('Informe sua senha para continuar.');
       return;
     }
 
     if (mode === 'register') {
       if (!name.trim()) {
-        setErrorMessage('Por favor, informe seu nome.');
+        setErrorMessage('Informe seu nome completo.');
         return;
       }
       if (password.length < 6) {
-        setErrorMessage('A senha deve ter no mínimo 6 caracteres.');
+        setErrorMessage('A senha deve conter no mínimo 6 caracteres.');
         return;
       }
       if (password !== confirmPassword) {
@@ -95,7 +86,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
       const res = await loginWithEmailPassword(email.trim(), password);
       setSubmitting(false);
       if (!res.success) {
-        setErrorMessage(res.error || 'E-mail ou senha incorretos.');
+        setErrorMessage(res.error || 'E-mail ou senha inválidos.');
       } else {
         if (onSuccess) onSuccess();
       }
@@ -103,76 +94,57 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
   };
 
   return (
-    <div className="min-h-screen bg-[#050608] text-slate-100 flex flex-col justify-center items-center px-4 py-8 selection:bg-emerald-500/20 selection:text-emerald-400 relative overflow-hidden">
-      {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-72 h-72 bg-emerald-950/20 rounded-full blur-[100px] pointer-events-none" />
+    <div className="min-h-screen bg-[#050608] text-slate-100 flex flex-col justify-center items-center px-4 py-8 relative selection:bg-white/20 selection:text-white">
+      {/* Subtle, refined atmospheric lighting */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">
+        <div className="w-[600px] h-[350px] bg-gradient-to-b from-white/[0.03] to-transparent rounded-full blur-3xl opacity-50 -translate-y-24" />
+      </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="w-full max-w-md relative z-10"
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="w-full max-w-sm sm:max-w-md relative z-10"
       >
-        {onBackToLanding && (
-          <div className="mb-4 flex justify-start">
-            <button
-              type="button"
-              onClick={onBackToLanding}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs text-slate-300 hover:text-white border border-white/[0.08] transition-all cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Voltar para a Apresentação</span>
-            </button>
-          </div>
-        )}
-
-        {/* Brand Header */}
-        <div className="flex flex-col items-center text-center mb-6 space-y-2.5">
-          <div className="relative">
+        {/* Brand Header & Architectural Logo Card */}
+        <div className="flex flex-col items-center text-center mb-6">
+          {/* Logo Card Frame */}
+          <div className="p-3.5 rounded-3xl bg-gradient-to-b from-[#141820] to-[#0A0C10] border border-white/[0.14] shadow-2xl shadow-black/80 mb-4 transition-transform hover:scale-[1.02]">
             <DriveWiseLogo
-              size={64}
+              size={76}
               rounded={true}
-              className="shadow-2xl shadow-emerald-950/60 border border-white/[0.15]"
+              className="border border-white/[0.18] shadow-inner"
             />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#050608] flex items-center justify-center shadow">
-              <ShieldCheck className="w-3.5 h-3.5 text-black" />
-            </div>
           </div>
 
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[11px] font-mono font-bold uppercase tracking-wider">
-              <Zap className="w-3 h-3" /> Copiloto do Motorista
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              DRIVEWISE
-            </h1>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto">
-              Acesse sua conta para proteger seu lucro e avaliar corridas em tempo real.
-            </p>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-wider uppercase font-mono">
+            DriveWise
+          </h1>
+          <p className="text-xs text-slate-400 mt-1 font-medium">
+            {mode === 'login' ? 'Entre para acessar seu copiloto' : 'Crie sua conta para começar'}
+          </p>
         </div>
 
-        {/* Main Auth Card */}
-        <div className="bg-[#0A0C11] border border-white/[0.1] rounded-3xl p-6 sm:p-7 shadow-2xl shadow-black relative overflow-hidden backdrop-blur-xl">
-          {/* Top subtle highlight */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent" />
+        {/* Auth Container Card */}
+        <div className="bg-[#0B0E14] border border-white/[0.1] rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/90 backdrop-blur-xl relative">
+          {/* Subtle top edge specular highlight */}
+          <div className="absolute top-0 inset-x-8 h-[1px] bg-gradient-to-r from-transparent via-white/[0.2] to-transparent" />
 
-          {/* Mode Switcher (Tabs) */}
-          <div className="grid grid-cols-2 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06] mb-6">
+          {/* Mode Switcher Tabs */}
+          <div className="grid grid-cols-2 p-1 rounded-2xl bg-black/60 border border-white/[0.08] mb-6">
             <button
               type="button"
               onClick={() => {
                 setMode('login');
                 setErrorMessage(null);
               }}
-              className={`py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 mode === 'login'
-                  ? 'bg-emerald-500 text-black shadow-md'
+                  ? 'bg-white text-black shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Entrar na Conta
+              Entrar
             </button>
             <button
               type="button"
@@ -180,28 +152,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
                 setMode('register');
                 setErrorMessage(null);
               }}
-              className={`py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 mode === 'register'
-                  ? 'bg-emerald-500 text-black shadow-md'
+                  ? 'bg-white text-black shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Criar Nova Conta
+              Criar Conta
             </button>
           </div>
 
-          {/* Google 1-Click Login Button */}
+          {/* Google 1-Tap Sign-In */}
           <button
-            id="btn-google-auth-screen"
+            id="btn-google-auth"
             type="button"
             onClick={handleGoogleAuth}
             disabled={submitting || isAuthLoading}
-            className="w-full h-12 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.98] text-slate-950 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-3 shadow-lg shadow-white/5 disabled:opacity-50 cursor-pointer"
+            className="w-full h-12 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.98] text-slate-950 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-3 shadow-md disabled:opacity-50 cursor-pointer"
           >
             {submitting ? (
-              <div className="w-5 h-5 border-2 border-slate-950/20 border-t-slate-950 rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
             ) : (
-              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -220,25 +192,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
                 />
               </svg>
             )}
-            <span>
-              {mode === 'login'
-                ? 'Entrar com Conta Google'
-                : 'Cadastrar com Conta Google'}
-            </span>
+            <span>{mode === 'login' ? 'Continuar com o Google' : 'Cadastrar com o Google'}</span>
           </button>
 
-          <div className="mt-2 text-center text-[10px] text-slate-400 flex items-center justify-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>Autenticação direta oficial Google (sem senhas de terceiros)</span>
-          </div>
-
-          {/* Divider */}
+          {/* Clean Minimalist Divider */}
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/[0.08]" />
             </div>
-            <div className="relative flex justify-center text-[10px] uppercase font-mono tracking-wider text-slate-400">
-              <span className="bg-[#0A0C11] px-3">ou use seu e-mail</span>
+            <div className="relative flex justify-center text-[11px] font-medium text-slate-400">
+              <span className="bg-[#0B0E14] px-3">ou e-mail</span>
             </div>
           </div>
 
@@ -247,7 +210,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
             {mode === 'register' && (
               <div>
                 <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Seu Nome Completo
+                  Nome Completo
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -256,8 +219,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: João da Silva"
-                    className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/50 border border-white/[0.12] focus:border-emerald-500 focus:outline-none text-white text-xs placeholder:text-slate-400 transition-colors"
+                    placeholder="Seu nome"
+                    className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/40 border border-white/[0.1] focus:border-white/40 focus:outline-none text-white text-xs placeholder:text-slate-500 transition-colors"
                   />
                 </div>
               </div>
@@ -274,8 +237,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seuemail@exemplo.com"
-                  className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/50 border border-white/[0.12] focus:border-emerald-500 focus:outline-none text-white text-xs placeholder:text-slate-400 transition-colors"
+                  placeholder="exemplo@email.com"
+                  className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/40 border border-white/[0.1] focus:border-white/40 focus:outline-none text-white text-xs placeholder:text-slate-500 transition-colors"
                 />
               </div>
             </div>
@@ -291,13 +254,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'register' ? 'Mínimo 6 caracteres' : '••••••••'}
-                  className="w-full h-11 pl-10 pr-10 rounded-xl bg-black/50 border border-white/[0.12] focus:border-emerald-500 focus:outline-none text-white text-xs placeholder:text-slate-400 transition-colors"
+                  placeholder="••••••••"
+                  className="w-full h-11 pl-10 pr-10 rounded-xl bg-black/40 border border-white/[0.1] focus:border-white/40 focus:outline-none text-white text-xs placeholder:text-slate-500 transition-colors"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -317,14 +280,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repita sua senha"
-                    className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/50 border border-white/[0.12] focus:border-emerald-500 focus:outline-none text-white text-xs placeholder:text-slate-400 transition-colors"
+                    className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/40 border border-white/[0.1] focus:border-white/40 focus:outline-none text-white text-xs placeholder:text-slate-500 transition-colors"
                   />
                 </div>
               </div>
             )}
 
             {errorMessage && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-start gap-2 text-rose-300 text-xs">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-2.5 text-rose-300 text-xs">
                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <span className="leading-snug">{errorMessage}</span>
               </div>
@@ -333,24 +296,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLandi
             <button
               type="submit"
               disabled={submitting}
-              className="w-full h-12 mt-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+              className="w-full h-12 mt-2 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-black font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-black/40 transition-all cursor-pointer disabled:opacity-50"
             >
               {submitting ? (
-                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>{mode === 'login' ? 'Entrar no DriveWise' : 'Cadastrar e Começar'}</span>
+                  <span>{mode === 'login' ? 'Entrar' : 'Criar Conta'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
-
-          {/* Footer note */}
-          <div className="mt-5 pt-4 border-t border-white/[0.06] flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-            <Lock className="w-3 h-3 text-emerald-400" />
-            <span>Dados criptografados via Google Firebase</span>
-          </div>
         </div>
       </motion.div>
     </div>

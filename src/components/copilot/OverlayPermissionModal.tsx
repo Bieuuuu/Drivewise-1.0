@@ -13,6 +13,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { DriveWiseLogo } from '../DriveWiseLogo';
+import { getNativeBridge, isNativeAndroid } from '../../services/nativeBridge';
 
 interface OverlayPermissionModalProps {
   isOpen: boolean;
@@ -30,7 +31,30 @@ export const OverlayPermissionModal: React.FC<OverlayPermissionModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleGrantAll = () => {
+  const handleGrantAll = async () => {
+    // 1. If in native Android APK, trigger native Android settings intent
+    if (isNativeAndroid()) {
+      try {
+        const bridge = getNativeBridge();
+        await bridge.requestOverlayPermission();
+        await bridge.requestAccessibilityPermission();
+        await bridge.startFloatingOverlay();
+      } catch (err) {
+        console.warn('Erro ao chamar bridge nativo Android:', err);
+      }
+    } else {
+      // 2. In Web / PWA, request standard notifications
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'default') {
+            await Notification.requestPermission();
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao solicitar permissao de notificacao:', e);
+      }
+    }
+
     try {
       localStorage.setItem('drivewise_overlay_permission_v1', 'granted');
       localStorage.setItem('drivewise_accessibility_permission_v1', 'granted');

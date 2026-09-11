@@ -13,13 +13,11 @@ import {
 import {
   getFirestore,
   doc,
-  getDocFromServer,
   setDoc,
   getDoc,
   collection,
   getDocs,
   deleteDoc,
-  enableIndexedDbPersistence,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -85,13 +83,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Test Connection on Boot
 export async function testConnection(): Promise<boolean> {
+  // If browser is offline, return false immediately without triggering network errors
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return false;
+  }
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    const testDoc = doc(db, 'test', 'connection');
+    await getDoc(testDoc);
     return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('DriveWise offline mode active.');
-    }
+    // Graceful offline fallback
     return false;
   }
 }
