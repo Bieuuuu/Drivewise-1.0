@@ -68,7 +68,7 @@ export const CopilotHubView: React.FC = () => {
               className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Simulador</span>
+              <span>Testar Corrida</span>
             </button>
           </div>
         </div>

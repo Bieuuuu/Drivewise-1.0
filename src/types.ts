@@ -269,3 +269,61 @@ export interface DecisionAnalytics {
     rating: 'alta' | 'normal' | 'baixa';
   }[];
 }
+
+// ==========================================
+// DRIVEWISE SUBSCRIPTION & TRIAL TYPES
+// ==========================================
+
+export type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'canceled';
+export type PaymentMethodType = 'pix' | 'credit_card';
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number; // 9.99
+  originalPrice: number; // 29.90
+  currency: string; // 'R$'
+  period: 'mês';
+  trialDays: number; // 10
+  badge: string; // 'Promoção de Lançamento'
+  features: string[];
+}
+
+export interface SubscriptionState {
+  // Master switch for the subscription system:
+  // false = OFFLINE (Testing mode - all PRO features free and accessible)
+  // true = ONLINE (Paywall active - requires trial or active subscription)
+  isSystemOnline: boolean;
+  status: SubscriptionStatus;
+  trialStartDate: string; // ISO date
+  trialEndDate: string; // ISO date (trialStartDate + 10 days)
+  planId: string;
+  planName: string;
+  priceMonthly: number; // 9.99
+  isSubscribed: boolean;
+  subscribedAt?: string;
+  paymentMethod?: PaymentMethodType;
+  nextBillingDate?: string;
+}
+
+export const LAUNCH_PROMO_PLAN: SubscriptionPlan = {
+  id: 'drivewise_pro_launch',
+  name: 'DriveWise PRO',
+  price: 9.99,
+  originalPrice: 29.90,
+  currency: 'R$',
+  period: 'mês',
+  trialDays: 10,
+  badge: 'Promoção de Lançamento (66% OFF)',
+  features: [
+    '10 dias de teste 100% gratuito (sem cobrança inicial)',
+    'Copiloto Veicular em tempo real sobreposto aos apps',
+    'Cálculo instantâneo de R$/km líquido e R$/hora líquida',
+    'Bloqueio automático de corridas no prejuízo',
+    'Modo Batalha: comparação direta Uber vs 99 vs InDrive',
+    'Controle de jornadas, faturamento e auditoria de combustível',
+    'Sincronização ilimitada em nuvem segura com Google',
+    'Relatórios fiscais e de rentabilidade para download',
+    'Cancelamento fácil a qualquer momento com 1 clique',
+  ],
+};

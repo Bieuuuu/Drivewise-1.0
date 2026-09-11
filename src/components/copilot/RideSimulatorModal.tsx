@@ -225,9 +225,9 @@ export const RideSimulatorModal: React.FC<RideSimulatorModalProps> = ({
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Simulador de Corridas do Copiloto</h2>
+              <h2 className="text-base font-bold text-white">Calculadora e Teste de Corrida</h2>
               <p className="text-xs text-slate-400">
-                Teste ofertas em tempo real e veja o Score DRIVEWISE e lucro líquido
+                Avalie qualquer proposta de corrida e calcule o lucro líquido real
               </p>
             </div>
           </div>

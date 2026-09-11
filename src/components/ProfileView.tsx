@@ -40,6 +40,10 @@ import {
   LogOut,
   Trash2,
   Minimize2,
+  Clock,
+  QrCode,
+  CreditCard,
+  Sliders,
 } from 'lucide-react';
 import { UserAvatar } from './UserAvatar';
 
@@ -75,6 +79,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
     setIsAuthModalOpen,
     isMinimalistMode,
     toggleMinimalistMode,
+    subscription,
+    isSubscriptionSystemOnline,
+    isTrialActive,
+    isTrialExpired,
+    trialDaysRemaining,
+    isPro,
+    setIsSubscriptionModalOpen,
+    toggleSubscriptionSystem,
+    resetTrial,
+    simulateTrialDaysRemaining,
   } = useDriveWise();
 
   const [cloudToast, setCloudToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -108,7 +122,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
 
   // Active section tab
   const [activeSubTab, setActiveSubTab] = useState<
-    'goals' | 'simulator' | 'comparison' | 'fuel' | 'settings' | 'privacy'
+    'goals' | 'subscription' | 'simulator' | 'comparison' | 'fuel' | 'settings' | 'privacy'
   >('goals');
 
   // Goals edit states
@@ -405,6 +419,56 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
         </div>
       </div>
 
+      {/* DRIVEWISE PRO SUBSCRIPTION STATUS TILE */}
+      <div className="rounded-2xl p-4 sm:p-5 border border-emerald-500/30 bg-gradient-to-r from-emerald-950/25 via-[#0C0C0D] to-[#0C0C0D] relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
+          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400 shadow-sm">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-white text-sm">DriveWise PRO</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
+                  R$ 9,99/mês • 10 Dias Grátis
+                </span>
+              </div>
+              <div className="text-xs text-slate-300 mt-1">
+                {!isSubscriptionSystemOnline ? (
+                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Modo de Testes Beta Ativo: Sistema de cobrança OFFLINE • Recursos 100% liberados</span>
+                  </span>
+                ) : subscription.isSubscribed ? (
+                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Assinatura Ativa (Renovação mensal em {subscription.nextBillingDate ? new Date(subscription.nextBillingDate).toLocaleDateString('pt-BR') : '30 dias'})</span>
+                  </span>
+                ) : isTrialActive ? (
+                  <span className="flex items-center gap-1.5 text-amber-400 font-medium">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span>Período Gratuito Ativo: {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia restante' : 'dias restantes'}</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-rose-400 font-medium">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Período de testes de 10 dias encerrado. Assine por R$ 9,99/mês.</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsSubscriptionModalOpen(true)}
+            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all cursor-pointer shadow-sm"
+          >
+            <span>Gerenciar Assinatura</span>
+          </button>
+        </div>
+      </div>
+
       {/* MINIMALIST MODE VIEW: Displays strictly what is essential */}
       {isMinimalistMode ? (
         <div className="space-y-4">
@@ -548,6 +612,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
             {[
               { id: 'goals', label: 'Metas', icon: Target },
+              { id: 'subscription', label: 'Plano PRO', icon: Sparkles },
               { id: 'simulator', label: 'Simulador', icon: Calculator },
               { id: 'comparison', label: 'Comparações', icon: Sparkles },
               { id: 'fuel', label: 'Combustível', icon: Fuel },
@@ -572,6 +637,177 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
               );
             })}
           </div>
+
+      {/* SECTION: PLANO PRO & ASSINATURA */}
+      {activeSubTab === 'subscription' && (
+        <div className="bg-[#0C0C0D] border border-white/[0.08] rounded-2xl p-5 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white">DriveWise PRO</h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  PROMOÇÃO DE LANÇAMENTO
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                10 dias grátis de degustação • Depois apenas R$ 9,99/mês
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsSubscriptionModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Abrir Checkout / Métodos</span>
+            </button>
+          </div>
+
+          {/* Current State Explanation Card */}
+          <div className="p-4 rounded-2xl bg-black/40 border border-white/[0.08] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300">Status da Homologação:</span>
+              <span
+                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                  isSubscriptionSystemOnline
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                }`}
+              >
+                {isSubscriptionSystemOnline ? 'Sistema de Cobrança ONLINE' : 'Sistema OFFLINE (Modo de Testes)'}
+              </span>
+            </div>
+
+            {!isSubscriptionSystemOnline ? (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs leading-relaxed text-slate-300">
+                <p className="font-semibold text-emerald-400 mb-1">
+                  ✓ Modo de Testes Ativo (Sem Cobrança)
+                </p>
+                O sistema de assinatura está temporariamente <strong>desativado para cobranças</strong> para que você e os primeiros motoristas possam testar todas as funcionalidades do aplicativo sem qualquer bloqueio.
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs leading-relaxed text-slate-300">
+                {subscription.isSubscribed ? (
+                  <p className="text-emerald-400 font-bold">
+                    ✓ Assinatura Ativa (R$ 9,99/mês) — Próxima renovação: {subscription.nextBillingDate ? new Date(subscription.nextBillingDate).toLocaleDateString('pt-BR') : 'Mensal'}
+                  </p>
+                ) : isTrialActive ? (
+                  <p className="text-amber-400 font-bold">
+                    ⏳ Período de Teste Gratuito em andamento: Restam {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'}.
+                  </p>
+                ) : (
+                  <p className="text-rose-400 font-bold">
+                    ⚠️ Período de 10 dias de teste encerrado. É necessário ativar a assinatura por R$ 9,99/mês para continuar utilizando os recursos do copiloto.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Pricing breakdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1">
+              <span className="text-[11px] text-slate-400 font-medium">Preço Promocional</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-white">R$ 9,99</span>
+                <span className="text-xs text-slate-400">/ mês</span>
+                <span className="text-xs text-slate-500 line-through">R$ 29,90</span>
+              </div>
+              <p className="text-[11px] text-emerald-400 font-medium">Economia de 66% na fase de lançamento</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1">
+              <span className="text-[11px] text-slate-400 font-medium">Período de Degustação</span>
+              <div className="text-2xl font-black text-amber-400">10 Dias Grátis</div>
+              <p className="text-[11px] text-slate-400">Teste sem compromisso em suas corridas reais</p>
+            </div>
+          </div>
+
+          {/* Included Features */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+              Recursos Liberados no Plano PRO:
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {[
+                'Copiloto Flutuante em tempo real sobre Uber/99',
+                'Cálculo instantâneo de R$/km e R$/hora líquida',
+                'Filtro anti-prejuízo (rejeição de corridas ruins)',
+                'Comparativo inteligente de corridas simultâneas',
+                'Auditoria de combustível e custo operacional real',
+                'Sincronização ilimitada em nuvem com conta Google',
+                'Suporte prioritário e atualizações contínuas',
+              ].map((feat, i) => (
+                <div key={i} className="flex items-center gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-slate-300 text-[11px]">{feat}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Test & Simulation Controls */}
+          <div className="pt-3 border-t border-white/[0.08] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                Controles de Teste do Desenvolvedor:
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleSubscriptionSystem(!isSubscriptionSystemOnline)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  isSubscriptionSystemOnline
+                    ? 'bg-amber-500 text-black'
+                    : 'bg-white/[0.08] text-slate-300 hover:text-white'
+                }`}
+              >
+                {isSubscriptionSystemOnline ? 'Desativar (Mudar para Offline)' : 'Ativar Sistema (Online)'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="text-slate-400 text-[11px]">Simular Trial:</span>
+              <button
+                type="button"
+                onClick={() => simulateTrialDaysRemaining(10)}
+                className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-[11px] font-bold text-slate-200"
+              >
+                10 Dias
+              </button>
+              <button
+                type="button"
+                onClick={() => simulateTrialDaysRemaining(5)}
+                className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-[11px] font-bold text-slate-200"
+              >
+                5 Dias
+              </button>
+              <button
+                type="button"
+                onClick={() => simulateTrialDaysRemaining(1)}
+                className="px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-[11px] font-bold text-amber-400"
+              >
+                1 Dia
+              </button>
+              <button
+                type="button"
+                onClick={() => simulateTrialDaysRemaining(0)}
+                className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-[11px] font-bold text-rose-300"
+              >
+                Expirar
+              </button>
+              <button
+                type="button"
+                onClick={resetTrial}
+                className="ml-auto text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+              >
+                Resetar Trial
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SECTION: METAS */}
       {activeSubTab === 'goals' && (

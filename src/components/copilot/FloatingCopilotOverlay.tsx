@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Clock,
   Navigation,
-  Sparkles,
   Layers,
   ChevronRight,
   Maximize2,
@@ -17,12 +16,13 @@ import {
   Play,
   Settings,
   GitCompare,
-  CornerUpRight,
   DollarSign,
   Flame,
   Check,
   RotateCcw,
   Zap,
+  Sparkles,
+  CornerUpRight,
 } from 'lucide-react';
 import { useDriveWise } from '../../context/DriveWiseContext';
 import { DriveWiseLogo } from '../DriveWiseLogo';
@@ -76,9 +76,6 @@ export const FloatingCopilotOverlay: React.FC = () => {
     completeRideOpportunity,
     cancelRideOpportunity,
     rerouteOrUpdateRide,
-    triggerSimultaneousRides,
-    addRideOpportunity,
-    setIsSimulatorOpen,
     setIsRideAnalysisModalOpen,
     user,
     drivingMode,
@@ -88,9 +85,21 @@ export const FloatingCopilotOverlay: React.FC = () => {
     isJourneyActive,
   } = useDriveWise();
 
-  // Position of the bubble on screen (default anchored to top-right edge)
+  // Position of the overlay on screen (stored in localStorage so it stays wherever the user leaves it)
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('drivewise_overlay_pos');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+            return {
+              x: Math.min(Math.max(8, parsed.x), window.innerWidth - 64),
+              y: Math.min(Math.max(40, parsed.y), window.innerHeight - 80),
+            };
+          }
+        }
+      } catch {}
       return { x: Math.max(16, window.innerWidth - 76), y: 150 };
     }
     return { x: 300, y: 150 };
@@ -160,24 +169,6 @@ export const FloatingCopilotOverlay: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Keep bubble inside viewport on resize
-  useEffect(() => {
-    const handleResize = () => {
-      setPosition((prev) => {
-        const maxX = Math.max(16, window.innerWidth - 76);
-        const maxY = Math.max(60, window.innerHeight - 130);
-        return {
-          x: prev.x > window.innerWidth / 2 ? maxX : 16,
-          y: Math.min(Math.max(60, prev.y), maxY),
-        };
-      });
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  if (!overlayPref.isEnabled) return null;
-
   const bubbleSize = 56; // w-14 h-14
   const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 390;
   const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 844;
@@ -192,28 +183,30 @@ export const FloatingCopilotOverlay: React.FC = () => {
   const colors = currentRide ? getScoreColor(currentRide.scoreTier) : null;
   const isExpanded = Boolean(overlayPref.isExpanded && currentRide && colors);
 
+  // Keep overlay inside viewport on window resize without resetting position
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((prev) => {
+        const maxX = Math.max(8, window.innerWidth - (isExpanded ? cardWidth : bubbleSize) - 8);
+        const maxY = Math.max(40, window.innerHeight - (isExpanded ? 420 : bubbleSize) - 40);
+        return {
+          x: Math.min(Math.max(8, prev.x), maxX),
+          y: Math.min(Math.max(40, prev.y), maxY),
+        };
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isExpanded, cardWidth, bubbleSize]);
+
   // Check if bubble is in the right half of the screen
   const isDockedRight = position.x > screenWidth / 2 - 28;
 
-  // Calculate effective render coordinates to prevent ANY clipping offscreen
-  let effectiveX = position.x;
-  let effectiveY = position.y;
-
-  if (isExpanded) {
-    if (isDockedRight) {
-      const bubbleRight = position.x + bubbleSize;
-      effectiveX = bubbleRight - cardWidth;
-    }
-    const maxCardX = Math.max(16, screenWidth - cardWidth - 16);
-    effectiveX = Math.min(Math.max(16, effectiveX), maxCardX);
-    const maxCardY = Math.max(60, screenHeight - 200);
-    effectiveY = Math.min(Math.max(60, effectiveY), maxCardY);
-  } else {
-    const maxBubbleX = Math.max(16, screenWidth - bubbleSize - 16);
-    effectiveX = Math.min(Math.max(16, effectiveX), maxBubbleX);
-    const maxBubbleY = Math.max(60, screenHeight - bubbleSize - 80);
-    effectiveY = Math.min(Math.max(60, effectiveY), maxBubbleY);
-  }
+  // Calculate effective render coordinates ensuring it stays exactly where positioned
+  const maxW = isExpanded ? cardWidth : bubbleSize;
+  const maxH = isExpanded ? 420 : bubbleSize;
+  const effectiveX = Math.min(Math.max(8, position.x), screenWidth - maxW - 8);
+  const effectiveY = Math.min(Math.max(40, position.y), screenHeight - maxH - 40);
 
   // Multi-ride calculation helper (Uber vs 99 dispute comparison)
   const sortedPending = [...pendingRides].sort((a, b) => b.score - a.score);
@@ -251,8 +244,8 @@ export const FloatingCopilotOverlay: React.FC = () => {
     const currentWidth = isExpanded ? cardWidth : bubbleSize;
     const currentHeight = isExpanded ? 420 : bubbleSize;
 
-    const boundedX = Math.min(Math.max(16, newX), screenWidth - currentWidth - 16);
-    const boundedY = Math.min(Math.max(60, newY), screenHeight - currentHeight - 60);
+    const boundedX = Math.min(Math.max(8, newX), screenWidth - currentWidth - 8);
+    const boundedY = Math.min(Math.max(40, newY), screenHeight - currentHeight - 40);
 
     setPosition({ x: boundedX, y: boundedY });
   };
@@ -260,16 +253,10 @@ export const FloatingCopilotOverlay: React.FC = () => {
   const handlePointerUp = () => {
     if (isDragging) {
       setIsDragging(false);
-      if (!isExpanded) {
-        const bubbleCenter = position.x + bubbleSize / 2;
-        const screenMiddle = screenWidth / 2;
-        const snapToRight = bubbleCenter >= screenMiddle;
-        const snappedX = snapToRight
-          ? Math.max(16, screenWidth - bubbleSize - 16)
-          : 16;
-        const boundedY = Math.min(Math.max(60, position.y), screenHeight - bubbleSize - 80);
-        setPosition({ x: snappedX, y: boundedY });
-      }
+      // Persist exact position in localStorage so it stays wherever the user leaves it
+      try {
+        localStorage.setItem('drivewise_overlay_pos', JSON.stringify(position));
+      } catch {}
     }
   };
 
@@ -314,48 +301,6 @@ export const FloatingCopilotOverlay: React.FC = () => {
     window.addEventListener('touchend', onTouchEnd);
   };
 
-  // Quick Single Sample Ride Trigger
-  const triggerSampleRide = (platform: PlatformType = 'Uber') => {
-    const isUber = platform === 'Uber';
-    const sampleRide: Omit<RideOpportunity, 'id' | 'createdAt' | 'updatedAt'> = {
-      userId: user.email || 'user-1',
-      workSessionId: activeSession ? activeSession.id : 'ws-test',
-      platform,
-      status: 'received',
-      offeredValue: isUber ? 38.5 : 29.8,
-      finalValue: isUber ? 38.5 : 29.8,
-      distanceToPassengerKm: isUber ? 1.2 : 0.8,
-      estimatedTripDistanceKm: isUber ? 12.4 : 9.5,
-      actualTripDistanceKm: isUber ? 12.4 : 9.5,
-      estimatedTimeToPassengerMin: isUber ? 3 : 2,
-      estimatedTripTimeMin: isUber ? 24 : 18,
-      actualTripTimeMin: isUber ? 24 : 18,
-      surgeMultiplier: isUber ? 1.2 : 1.0,
-      extraCosts: 0,
-      estimatedProfit: isUber ? 28.5 : 22.4,
-      netProfit: isUber ? 28.5 : 22.4,
-      grossPerKm: isUber ? 3.1 : 3.13,
-      netPerKm: isUber ? 2.65 : 2.7,
-      grossPerHour: isUber ? 96.25 : 99.3,
-      netPerHour: isUber ? 82.5 : 85.0,
-      deadheadPercent: isUber ? 8.8 : 7.7,
-      score: isUber ? 91 : 87,
-      scoreTier: 'Excelente',
-      scoreReason: 'Alta rentabilidade por KM e retorno para zona com alta demanda.',
-      recommendation: isUber
-        ? 'Corrida de ouro! Ganho líquido de R$ 2,65/km com passageiro a 3 minutos.'
-        : 'Excelente taxa horária (~R$ 85/h líquido) e busca curtíssima.',
-      ruleAlerts: [],
-      pickupAddress: isUber ? 'Av. Brigadeiro Faria Lima, 2232' : 'Rua Augusta, 1508',
-      dropoffAddress: isUber ? 'Av. Paulista, 1578 (Masp)' : 'Aeroporto de Congonhas',
-      timestamp: new Date().toISOString(),
-    };
-
-    addRideOpportunity(sampleRide);
-    updateOverlayPref({ isExpanded: true });
-    setIsMenuOpen(false);
-  };
-
   const handleBubbleClick = (e: React.MouseEvent) => {
     if (dragMoved) return;
 
@@ -369,11 +314,10 @@ export const FloatingCopilotOverlay: React.FC = () => {
   const handleMinimize = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     updateOverlayPref({ isExpanded: false });
-    const screenMiddle = screenWidth / 2;
-    const isRight = effectiveX + cardWidth / 2 >= screenMiddle;
-    const snappedX = isRight ? Math.max(16, screenWidth - bubbleSize - 16) : 16;
-    const boundedY = Math.min(Math.max(60, effectiveY), screenHeight - bubbleSize - 80);
-    setPosition({ x: snappedX, y: boundedY });
+    setPosition((prev) => ({
+      x: Math.min(Math.max(8, prev.x), screenWidth - bubbleSize - 8),
+      y: Math.min(Math.max(40, prev.y), screenHeight - bubbleSize - 40),
+    }));
   };
 
   // Accept current selected ride and AUTO-DISCARD competing rides
@@ -383,7 +327,9 @@ export const FloatingCopilotOverlay: React.FC = () => {
 
     const acceptedPlatform = currentRide.platform;
     acceptRideOpportunity(currentRide.id);
-    playCopilotSound('good');
+    if (overlayPref.enableSoundAlerts) {
+      playCopilotSound('good');
+    }
 
     // Automatically discard competing rides
     const competingRides = pendingRides.filter((r) => r.id !== currentRide.id);
@@ -394,11 +340,13 @@ export const FloatingCopilotOverlay: React.FC = () => {
           `Recusada automaticamente pelo DriveWise (Aceita corrida mais lucrativa da ${acceptedPlatform})`
         );
       });
-      speakCopilotMessage(
-        `Chamada da ${acceptedPlatform} aceita! Concorrente recusada automaticamente para você focar no passageiro.`
-      );
+      if (overlayPref.enableVoiceAlerts) {
+        speakCopilotMessage(`${acceptedPlatform} aceita.`);
+      }
     } else {
-      speakCopilotMessage(`Chamada da ${acceptedPlatform} aceita! Bom trajeto.`);
+      if (overlayPref.enableVoiceAlerts) {
+        speakCopilotMessage(`${acceptedPlatform} aceita.`);
+      }
     }
 
     // Keep overlay open so driver monitors trip telemetry
@@ -412,12 +360,16 @@ export const FloatingCopilotOverlay: React.FC = () => {
 
     const rejectedId = currentRide.id;
     rejectRideOpportunity(rejectedId, 'Recusada pelo motorista');
-    playCopilotSound('bad');
+    if (overlayPref.enableSoundAlerts) {
+      playCopilotSound('bad');
+    }
 
     const remaining = pendingRides.filter((r) => r.id !== rejectedId);
     if (remaining.length > 0) {
       setSelectedRideId(remaining[0].id);
-      speakCopilotMessage(`Chamada recusada. Visualizando chamada concorrente da ${remaining[0].platform}.`);
+      if (overlayPref.enableVoiceAlerts) {
+        speakCopilotMessage(`Recusada. Visualizando ${remaining[0].platform}.`);
+      }
     } else {
       handleMinimize();
     }
@@ -428,51 +380,27 @@ export const FloatingCopilotOverlay: React.FC = () => {
     e.stopPropagation();
     if (activeRideInProgress) {
       completeRideOpportunity(activeRideInProgress.id);
-      playCopilotSound('good');
-      speakCopilotMessage(
-        `Viagem finalizada com sucesso! Total faturado: ${
-          activeRideInProgress.finalValue || activeRideInProgress.offeredValue
-        } reais. Excelente trabalho!`
-      );
+      if (overlayPref.enableSoundAlerts) {
+        playCopilotSound('good');
+      }
+      if (overlayPref.enableVoiceAlerts) {
+        const val = Math.round(activeRideInProgress.finalValue || activeRideInProgress.offeredValue || 0);
+        speakCopilotMessage(`Viagem finalizada. R$ ${val}.`);
+      }
       handleMinimize();
     }
   };
 
-  // Simulate in-route deviation
-  const handleSimulateDeviation = (e: React.MouseEvent) => {
+  // Toggle voice mute on/off directly from overlay header
+  const handleToggleVoiceMute = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (activeRideInProgress) {
-      rerouteOrUpdateRide(activeRideInProgress.id, {
-        additionalKm: 3.5,
-        additionalTimeMin: 7,
-        priceAdjustment: 4.8,
-        reason: 'Desvio por trânsito e rota recalculada',
-      });
-    }
-  };
-
-  // Simulate in-route price adjustment
-  const handleSimulatePriceAdjustment = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (activeRideInProgress) {
-      rerouteOrUpdateRide(activeRideInProgress.id, {
-        priceAdjustment: 6.5,
-        reason: 'Parada excedente e tempo no trânsito',
-      });
-    }
-  };
-
-  // Simulate passenger cancellation
-  const handleSimulatePassengerCancellation = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (activeRideInProgress) {
-      cancelRideOpportunity(
-        activeRideInProgress.id,
-        'Passageiro cancelou a viagem após 5 minutos de espera',
-        6.5
-      );
-    } else if (currentRide && currentRide.status === 'received') {
-      cancelRideOpportunity(currentRide.id, 'Passageiro cancelou a chamada antes do embarque', 0);
+    const newMuteState = !overlayPref.enableVoiceAlerts;
+    updateOverlayPref({ enableVoiceAlerts: newMuteState });
+    if (newMuteState && currentRide) {
+      const net = Math.round(currentRide.netProfit || 0);
+      speakCopilotMessage(`${currentRide.platform}. Nota ${currentRide.score}. Lucro ${net} reais.`);
+    } else if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
   };
 
@@ -480,17 +408,11 @@ export const FloatingCopilotOverlay: React.FC = () => {
     e.stopPropagation();
     if (currentRide) {
       if (currentRide.status === 'accepted') {
-        const text = `Corrida da ${currentRide.platform} em andamento. Destino: ${
-          currentRide.dropoffAddress || 'definido no app'
-        }. Faturamento atual de ${currentRide.finalValue || currentRide.offeredValue} reais.`;
-        speakCopilotMessage(text);
+        const val = Math.round(currentRide.finalValue || currentRide.offeredValue || 0);
+        speakCopilotMessage(`${currentRide.platform}. Em andamento. R$ ${val}.`);
       } else {
-        const text = `Nota ${currentRide.score}. ${currentRide.scoreTier}. Plataforma ${
-          currentRide.platform
-        }. Faturamento de ${currentRide.offeredValue.toFixed(0)} reais. Lucro líquido de ${
-          currentRide.netProfit.toFixed(0)
-        } reais. ${currentRide.recommendation || ''}`;
-        speakCopilotMessage(text);
+        const net = Math.round(currentRide.netProfit || 0);
+        speakCopilotMessage(`${currentRide.platform}. Nota ${currentRide.score}. Lucro ${net} reais.`);
       }
     }
   };
@@ -590,103 +512,68 @@ export const FloatingCopilotOverlay: React.FC = () => {
                 O DriveWise monitora chamadas simultâneas da <strong>Uber</strong> e <strong>99</strong> lado a lado com descarte automático da pior corrida.
               </p>
 
-              {/* Action Buttons */}
-              <div className="space-y-1.5 pt-1">
-                {/* SIMULTANEOUS DISPUTE BUTTON */}
-                <button
-                  type="button"
-                  id="btn-trigger-simultaneous-dispute"
-                  onClick={() => {
-                    triggerSimultaneousRides();
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-sky-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 border border-amber-400/40 text-xs font-mono font-black text-amber-300 transition-all flex items-center justify-between shadow-lg shadow-amber-500/10 group"
-                >
-                  <span className="flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                    <span>⚡ Simular Uber vs 99 (Abas)</span>
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
-                </button>
-
+              {/* Real Driver Companion Controls */}
+              <div className="space-y-2 pt-1">
                 {activeRideInProgress ? (
-                  <div className="pt-1 space-y-1 border-t border-white/[0.06]">
-                    <div className="text-[10px] font-mono text-sky-400 uppercase font-bold">
-                      Viagem em Andamento ({activeRideInProgress.platform})
+                  <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-500/30 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-mono">
+                      <span className="text-sky-300 font-bold">
+                        Viagem {activeRideInProgress.platform}
+                      </span>
+                      <span className="text-white font-bold">
+                        R$ {activeRideInProgress.offeredValue.toFixed(2)}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        handleSimulateDeviation(e);
-                        setIsMenuOpen(false);
-                      }}
-                      className="w-full py-1.5 px-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-mono text-amber-300 flex items-center justify-between"
-                    >
-                      <span>Simular Desvio Rota (+3.5km)</span>
-                      <CornerUpRight className="w-3 h-3 text-amber-400" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        handleSimulatePriceAdjustment(e);
-                        setIsMenuOpen(false);
-                      }}
-                      className="w-full py-1.5 px-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-mono text-emerald-300 flex items-center justify-between"
-                    >
-                      <span>Simular Reajuste (+R$ 6,50)</span>
-                      <DollarSign className="w-3 h-3 text-emerald-400" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        handleSimulatePassengerCancellation(e);
-                        setIsMenuOpen(false);
-                      }}
-                      className="w-full py-1.5 px-2.5 rounded-lg bg-rose-950/30 hover:bg-rose-900/40 text-[11px] font-mono text-rose-300 flex items-center justify-between"
-                    >
-                      <span>Simular Cancelamento Passageiro</span>
-                      <AlertTriangle className="w-3 h-3 text-rose-400" />
-                    </button>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      Destino: {activeRideInProgress.dropoffAddress || 'Em rota'}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateOverlayPref({ isExpanded: true });
+                          setIsMenuOpen(false);
+                        }}
+                        className="py-1.5 px-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[11px] font-mono text-center"
+                      >
+                        Ver Detalhes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          handleCompleteActiveTrip(e);
+                          setIsMenuOpen(false);
+                        }}
+                        className="py-1.5 px-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.12] text-slate-200 font-medium text-[11px] font-mono text-center"
+                      >
+                        Concluir
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => triggerSampleRide('Uber')}
-                      className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-white/[0.06] border border-white/[0.08] text-xs font-mono font-bold text-slate-200 transition-all flex items-center justify-between group"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-white" />
-                        Testar Chamada Uber
-                      </span>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => triggerSampleRide('99')}
-                      className="w-full py-2 px-3 rounded-xl bg-amber-950/20 hover:bg-amber-950/40 border border-amber-500/30 text-xs font-mono font-bold text-amber-300 transition-all flex items-center justify-between group"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-amber-400" />
-                        Testar Chamada 99
-                      </span>
-                      <ChevronRight className="w-3.5 h-3.5 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  </>
+                  <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-emerald-400">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      Radar Ativo & Pronto
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      O DriveWise analisa automaticamente chamadas recebidas nos apps de transporte, calculando ganho líquido por km e retorno seguro.
+                    </p>
+                    {lastAnalyzedRide && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateOverlayPref({ isExpanded: true });
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-[11px] font-mono text-slate-300 flex items-center justify-between"
+                      >
+                        <span>Ver última análise</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    )}
+                  </div>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSimulatorOpen(true);
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.05] text-[11px] font-mono text-slate-300 transition-all flex items-center justify-between"
-                >
-                  <span>Abrir Simulador Completo</span>
-                  <Settings className="w-3 h-3 text-slate-400" />
-                </button>
               </div>
 
               {/* Footer controls */}
@@ -851,11 +738,19 @@ export const FloatingCopilotOverlay: React.FC = () => {
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={handleVoiceSpeak}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
-                  title="Ouvir análise em viva-voz"
+                  onClick={handleToggleVoiceMute}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    overlayPref.enableVoiceAlerts
+                      ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
+                      : 'text-slate-500 hover:text-slate-400 hover:bg-white/[0.08]'
+                  }`}
+                  title={overlayPref.enableVoiceAlerts ? 'Voz ativada (clique para silenciar)' : 'Voz silenciada (clique para ativar)'}
                 >
-                  <Volume2 className="w-4 h-4" />
+                  {overlayPref.enableVoiceAlerts ? (
+                    <Volume2 className="w-4 h-4" />
+                  ) : (
+                    <VolumeX className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -965,39 +860,6 @@ export const FloatingCopilotOverlay: React.FC = () => {
                       <span className="text-slate-400 shrink-0">Destino:</span>
                       <span className="truncate text-slate-200">{currentRide.dropoffAddress || 'Destino do Passageiro'}</span>
                     </div>
-                  </div>
-
-                  {/* Real-time Lifecycle Simulation Controls */}
-                  <div className="pt-1 space-y-1.5">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">
-                      Detectores de Percurso em Tempo Real
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={handleSimulateDeviation}
-                        className="py-1.5 px-2 rounded-xl bg-amber-950/20 hover:bg-amber-950/40 border border-amber-500/30 text-[10px] font-mono text-amber-300 flex items-center justify-center gap-1"
-                      >
-                        <CornerUpRight className="w-3 h-3 text-amber-400" />
-                        <span>Simular Desvio (+3.5km)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSimulatePriceAdjustment}
-                        className="py-1.5 px-2 rounded-xl bg-emerald-950/20 hover:bg-emerald-950/40 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 flex items-center justify-center gap-1"
-                      >
-                        <DollarSign className="w-3 h-3 text-emerald-400" />
-                        <span>Reajuste (+R$ 6,50)</span>
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSimulatePassengerCancellation}
-                      className="w-full py-1.5 px-2 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/30 text-[10px] font-mono text-rose-300 flex items-center justify-center gap-1"
-                    >
-                      <AlertTriangle className="w-3 h-3 text-rose-400" />
-                      <span>Simular Passageiro Cancelou (Taxa R$ 6,50)</span>
-                    </button>
                   </div>
 
                   {/* Primary Complete Ride Action */}

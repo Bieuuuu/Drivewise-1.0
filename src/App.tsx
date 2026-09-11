@@ -22,20 +22,70 @@ import { RideSimulatorModal } from './components/copilot/RideSimulatorModal';
 import { OverlayPermissionModal } from './components/copilot/OverlayPermissionModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthModal } from './components/AuthModal';
+import { SubscriptionModal } from './components/subscription/SubscriptionModal';
 import { ProductLandingPage } from './components/landing/ProductLandingPage';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeStorage } from './utils/safeStorage';
 
 function DriveWiseApp() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [viewMode, setViewMode] = useState<'app' | 'landing'>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('landing') === 'true' || params.get('page') === 'landing') {
-        return 'landing';
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        // Explicit query parameters
+        if (params.get('app') === 'true' || params.get('view') === 'app') {
+          return 'app';
+        }
+        if (params.get('landing') === 'true' || params.get('page') === 'landing') {
+          return 'landing';
+        }
+
+        // Hash routing shortcuts
+        if (
+          window.location.hash.includes('painel') ||
+          window.location.hash.includes('dashboard') ||
+          window.location.hash.includes('app')
+        ) {
+          return 'app';
+        }
+
+        // If standalone PWA mode (installed on home screen), open the app dashboard
+        if (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) {
+          return 'app';
+        }
+
+        // If the user already used the app and has active work or stored preference
+        const savedPref = safeStorage.getItem('drivewise_user_entered_app');
+        if (savedPref === 'true') {
+          return 'app';
+        }
       }
+    } catch (e) {
+      console.warn('ViewMode initial state determination warning:', e);
     }
-    return 'app';
+    // Default to the official public landing page for new visitors
+    return 'landing';
   });
+
+  // Listen for hash changes to allow seamless switching
+  React.useEffect(() => {
+    const handleHashChange = () => {
+      try {
+        const hash = window.location.hash;
+        if (hash.includes('painel') || hash.includes('dashboard') || hash.includes('app')) {
+          setViewMode('app');
+        } else if (hash.includes('landing') || hash === '#inicio') {
+          setViewMode('landing');
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const {
     isSimulatorOpen,
@@ -49,10 +99,19 @@ function DriveWiseApp() {
     setIsAuthModalOpen,
   } = useDriveWise();
 
+  const handleEnterApp = () => {
+    try {
+      safeStorage.setItem('drivewise_user_entered_app', 'true');
+    } catch {
+      // ignore
+    }
+    setViewMode('app');
+  };
+
   if (viewMode === 'landing') {
     return (
       <ProductLandingPage
-        onEnterApp={() => setViewMode('app')}
+        onEnterApp={handleEnterApp}
       />
     );
   }
@@ -172,6 +231,7 @@ function DriveWiseApp() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
+      <SubscriptionModal />
 
       {/* Bottom Sticky Navigation */}
       <Navigation activeTab={activeTab} onChangeTab={setActiveTab} />

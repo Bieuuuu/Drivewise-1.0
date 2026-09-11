@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   Expense,
   FuelEntry,
@@ -13,7 +13,11 @@ import {
   DrivingModeSettings,
   CopilotNotificationSettings,
   RideStatus,
+  SubscriptionState,
+  PaymentMethodType,
+  LAUNCH_PROMO_PLAN,
 } from '../types';
+import { safeStorage } from '../utils/safeStorage';
 import {
   initialExpenses,
   initialFuelEntries,
@@ -66,6 +70,7 @@ interface DriveWiseContextType {
   gpsStatus: 'idle' | 'tracking' | 'error' | 'simulated';
   gpsAccuracy: number | null;
   currentCoords: { lat: number; lng: number } | null;
+  currentSpeedKmH: number;
   toggleMovementSimulation: () => void;
   startJourney: () => void;
   endJourney: (summaryData: {
@@ -150,11 +155,26 @@ interface DriveWiseContextType {
   isMinimalistMode: boolean;
   setIsMinimalistMode: (value: boolean) => void;
   toggleMinimalistMode: () => void;
+
+  // SUBSCRIPTION & TRIAL (OFFLINE BY DEFAULT FOR TESTING)
+  subscription: SubscriptionState;
+  isSubscriptionSystemOnline: boolean;
+  isTrialActive: boolean;
+  isTrialExpired: boolean;
+  trialDaysRemaining: number;
+  isPro: boolean;
+  isSubscriptionModalOpen: boolean;
+  setIsSubscriptionModalOpen: (open: boolean) => void;
+  toggleSubscriptionSystem: (online: boolean) => void;
+  activateSubscription: (method: PaymentMethodType) => void;
+  cancelSubscription: () => void;
+  resetTrial: () => void;
+  simulateTrialDaysRemaining: (daysRemaining: number) => void;
 }
 
 const DriveWiseContext = createContext<DriveWiseContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'drivewise_state_v1';
+const STORAGE_KEY = 'drivewise_state_v2';
 
 export const getTodayDateString = (): string => {
   const d = new Date();
@@ -171,7 +191,14 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [user, setUser] = useState<UserProfile>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_user`);
-      return saved ? JSON.parse(saved) : initialUserProfile;
+      if (saved) return JSON.parse(saved);
+      // Fallback check legacy v1 and clean demo values
+      const legacy = localStorage.getItem('drivewise_state_v1_user');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return { ...parsed, dailyGoal: parsed.dailyGoal || 0 };
+      }
+      return initialUserProfile;
     } catch {
       return initialUserProfile;
     }
@@ -180,7 +207,17 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [sessions, setSessions] = useState<WorkSession[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_sessions`);
-      return saved ? JSON.parse(saved) : initialSessions;
+      if (saved) {
+        const parsed: WorkSession[] = JSON.parse(saved);
+        return parsed.filter(
+          (s) =>
+            !s.id.startsWith('ws-20260903') &&
+            !s.id.startsWith('ws-20260902') &&
+            !s.id.startsWith('ws-20260901') &&
+            !s.id.startsWith('ws-202608')
+        );
+      }
+      return initialSessions;
     } catch {
       return initialSessions;
     }
@@ -189,7 +226,11 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [expenses, setExpenses] = useState<Expense[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_expenses`);
-      return saved ? JSON.parse(saved) : initialExpenses;
+      if (saved) {
+        const parsed: Expense[] = JSON.parse(saved);
+        return parsed.filter((e) => !e.id.startsWith('exp-'));
+      }
+      return initialExpenses;
     } catch {
       return initialExpenses;
     }
@@ -198,7 +239,11 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_fuel`);
-      return saved ? JSON.parse(saved) : initialFuelEntries;
+      if (saved) {
+        const parsed: FuelEntry[] = JSON.parse(saved);
+        return parsed.filter((f) => !f.id.startsWith('fuel-'));
+      }
+      return initialFuelEntries;
     } catch {
       return initialFuelEntries;
     }
@@ -217,7 +262,11 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [rides, setRides] = useState<RideOpportunity[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_rides`);
-      return saved ? JSON.parse(saved) : initialRideOpportunities;
+      if (saved) {
+        const parsed: RideOpportunity[] = JSON.parse(saved);
+        return parsed.filter((r) => !r.id.startsWith('ride-'));
+      }
+      return initialRideOpportunities;
     } catch {
       return initialRideOpportunities;
     }
@@ -268,9 +317,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
-  const [lastAnalyzedRide, setLastAnalyzedRide] = useState<RideOpportunity | null>(() => {
-    return initialRideOpportunities[initialRideOpportunities.length - 1] || null;
-  });
+  const [lastAnalyzedRide, setLastAnalyzedRide] = useState<RideOpportunity | null>(null);
 
   const [isRideAnalysisModalOpen, setIsRideAnalysisModalOpen] = useState<boolean>(false);
   const [isSimulatorOpen, setIsSimulatorOpen] = useState<boolean>(false);
@@ -348,6 +395,162 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const next = !prev;
       try {
         localStorage.setItem('drivewise_minimalist_mode_v1', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  // Subscription & Trial System (OFFLINE by default for testing phase)
+  const [subscription, setSubscription] = useState<SubscriptionState>(() => {
+    try {
+      const saved = safeStorage.getItem(`${STORAGE_KEY}_subscription`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          isSystemOnline: false,
+          status: 'trial',
+          trialStartDate: new Date().toISOString(),
+          trialEndDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+          planId: LAUNCH_PROMO_PLAN.id,
+          planName: LAUNCH_PROMO_PLAN.name,
+          priceMonthly: LAUNCH_PROMO_PLAN.price,
+          isSubscribed: false,
+          ...parsed,
+        };
+      }
+    } catch {
+      // ignore
+    }
+    const now = new Date();
+    return {
+      isSystemOnline: false, // OFFLINE por enquanto
+      status: 'trial',
+      trialStartDate: now.toISOString(),
+      trialEndDate: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+      planId: LAUNCH_PROMO_PLAN.id,
+      planName: LAUNCH_PROMO_PLAN.name,
+      priceMonthly: LAUNCH_PROMO_PLAN.price,
+      isSubscribed: false,
+    };
+  });
+
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState<boolean>(false);
+
+  // Computed Subscription Values
+  const isTrialActive = useMemo(() => {
+    if (subscription.isSubscribed) return false;
+    const end = new Date(subscription.trialEndDate).getTime();
+    return Date.now() < end;
+  }, [subscription.isSubscribed, subscription.trialEndDate]);
+
+  const isTrialExpired = useMemo(() => {
+    if (subscription.isSubscribed) return false;
+    const end = new Date(subscription.trialEndDate).getTime();
+    return Date.now() >= end;
+  }, [subscription.isSubscribed, subscription.trialEndDate]);
+
+  const trialDaysRemaining = useMemo(() => {
+    if (subscription.isSubscribed) return 0;
+    const end = new Date(subscription.trialEndDate).getTime();
+    const diffMs = end - Date.now();
+    if (diffMs <= 0) return 0;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }, [subscription.isSubscribed, subscription.trialEndDate]);
+
+  // CRITICAL LOGIC: If subscription system is OFFLINE, isPro is ALWAYS true for testing!
+  const isPro = useMemo(() => {
+    if (!subscription.isSystemOnline) {
+      return true; // Sistema offline: Acesso livre ilimitado para testes!
+    }
+    return subscription.isSubscribed || isTrialActive;
+  }, [subscription.isSystemOnline, subscription.isSubscribed, isTrialActive]);
+
+  const toggleSubscriptionSystem = useCallback((online: boolean) => {
+    setSubscription((prev) => {
+      const next = { ...prev, isSystemOnline: online };
+      try {
+        safeStorage.setItem(`${STORAGE_KEY}_subscription`, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const activateSubscription = useCallback((method: PaymentMethodType) => {
+    setSubscription((prev) => {
+      const now = new Date();
+      const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const next: SubscriptionState = {
+        ...prev,
+        status: 'active',
+        isSubscribed: true,
+        subscribedAt: now.toISOString(),
+        paymentMethod: method,
+        nextBillingDate: nextMonth.toISOString(),
+      };
+      try {
+        safeStorage.setItem(`${STORAGE_KEY}_subscription`, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const cancelSubscription = useCallback(() => {
+    setSubscription((prev) => {
+      const next: SubscriptionState = {
+        ...prev,
+        status: 'canceled',
+        isSubscribed: false,
+      };
+      try {
+        safeStorage.setItem(`${STORAGE_KEY}_subscription`, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const resetTrial = useCallback(() => {
+    setSubscription((prev) => {
+      const now = new Date();
+      const tenDays = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+      const next: SubscriptionState = {
+        ...prev,
+        status: 'trial',
+        isSubscribed: false,
+        trialStartDate: now.toISOString(),
+        trialEndDate: tenDays.toISOString(),
+      };
+      try {
+        safeStorage.setItem(`${STORAGE_KEY}_subscription`, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const simulateTrialDaysRemaining = useCallback((daysRemaining: number) => {
+    setSubscription((prev) => {
+      const now = new Date();
+      const targetEnd =
+        daysRemaining <= 0
+          ? new Date(now.getTime() - 10000)
+          : new Date(now.getTime() + daysRemaining * 24 * 60 * 60 * 1000);
+      const next: SubscriptionState = {
+        ...prev,
+        isSubscribed: false,
+        status: daysRemaining <= 0 ? 'expired' : 'trial',
+        trialEndDate: targetEnd.toISOString(),
+      };
+      try {
+        safeStorage.setItem(`${STORAGE_KEY}_subscription`, JSON.stringify(next));
       } catch {
         // ignore
       }
@@ -500,7 +703,8 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [currentGpsDistance, setCurrentGpsDistance] = useState<number>(0);
-  const [isSimulatingMovement, setIsSimulatingMovement] = useState<boolean>(true); // Default to simulating for rich interactive demo
+  const [isSimulatingMovement, setIsSimulatingMovement] = useState<boolean>(false);
+  const [currentSpeedKmH, setCurrentSpeedKmH] = useState<number>(0);
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'tracking' | 'error' | 'simulated'>('idle');
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -580,13 +784,15 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         watchIdRef.current = null;
       }
       setGpsStatus('idle');
+      setCurrentSpeedKmH(0);
       return;
     }
 
     if (isSimulatingMovement) {
       setGpsStatus('simulated');
       setGpsAccuracy(8);
-      // Simulate steady driving: add ~0.012 km every 1.5s (~29-35 km/h urban pace)
+      setCurrentSpeedKmH(35);
+      // Steady progress if specifically requested
       const simInterval = setInterval(() => {
         setCurrentGpsDistance((prev) => +(prev + 0.015).toFixed(2));
       }, 1500);
@@ -598,9 +804,15 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setGpsStatus('tracking');
       watchIdRef.current = navigator.geolocation.watchPosition(
         (pos) => {
-          const { latitude, longitude, accuracy } = pos.coords;
+          const { latitude, longitude, accuracy, speed } = pos.coords;
           setGpsAccuracy(accuracy);
           setCurrentCoords({ lat: latitude, lng: longitude });
+
+          if (typeof speed === 'number' && speed >= 0) {
+            setCurrentSpeedKmH(Math.round(speed * 3.6));
+          } else {
+            setCurrentSpeedKmH(0);
+          }
 
           if (prevCoordsRef.current) {
             const distanceAdded = computeDistanceBetweenCoords(
@@ -609,7 +821,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               latitude,
               longitude
             );
-            // Ignore tiny jitter under 3 meters (0.003 km) to prevent stationary drift
+            // Ignore tiny jitter under 5 meters (0.005 km) to prevent stationary drift
             if (distanceAdded > 0.005) {
               setCurrentGpsDistance((prev) => +(prev + distanceAdded).toFixed(2));
               prevCoordsRef.current = { lat: latitude, lng: longitude };
@@ -619,9 +831,9 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         },
         (error) => {
-          console.warn('GPS error, falling back to simulated movement:', error);
+          console.warn('GPS status error:', error);
           setGpsStatus('error');
-          setIsSimulatingMovement(true);
+          setCurrentSpeedKmH(0);
         },
         {
           enableHighAccuracy: true,
@@ -630,8 +842,8 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       );
     } else {
-      setGpsStatus('simulated');
-      setIsSimulatingMovement(true);
+      setGpsStatus('error');
+      setCurrentSpeedKmH(0);
     }
 
     return () => {
@@ -813,7 +1025,8 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     if ((drivingMode.isActive && drivingMode.voiceAlerts) || overlayPref.enableVoiceAlerts) {
-      const voiceText = `Nota ${newRide.score}. ${newRide.scoreTier}. R$ ${newRide.offeredValue.toFixed(0)}. ${newRide.recommendation}`;
+      const net = Math.round(newRide.netProfit || 0);
+      const voiceText = `${newRide.platform}. Nota ${newRide.score}. Lucro ${net} reais.`;
       speakCopilotMessage(voiceText);
     }
 
@@ -978,8 +1191,10 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       playCopilotSound('bad');
     }
 
-    const feeMsg = cancelFee > 0 ? `Taxa recebida: R$ ${cancelFee.toFixed(2)}` : 'Sem taxa de cancelamento.';
-    speakCopilotMessage(`Atenção: Corrida cancelada pelo passageiro. ${feeMsg}`);
+    if (overlayPref.enableVoiceAlerts || drivingMode.voiceAlerts) {
+      const feeMsg = cancelFee > 0 ? `Taxa R$ ${Math.round(cancelFee)}.` : '';
+      speakCopilotMessage(`Cancelada pelo passageiro. ${feeMsg}`.trim());
+    }
   };
 
   const rerouteOrUpdateRide = (
@@ -1028,11 +1243,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       playCopilotSound('good');
     }
 
-    const voiceMsg =
-      update.priceAdjustment && update.priceAdjustment > 0
-        ? `Aviso: Desvio detectado. Preço ajustado em mais ${update.priceAdjustment.toFixed(0)} reais.`
-        : `Aviso: Rota recalculada. Distância adicional de ${update.additionalKm?.toFixed(1)} quilômetros.`;
-    speakCopilotMessage(voiceMsg);
+    if (overlayPref.enableVoiceAlerts || drivingMode.voiceAlerts) {
+      const voiceMsg =
+        update.priceAdjustment && update.priceAdjustment > 0
+          ? `Ajuste mais R$ ${Math.round(update.priceAdjustment)}.`
+          : `Desvio mais ${update.additionalKm?.toFixed(1)} km.`;
+      speakCopilotMessage(voiceMsg);
+    }
   };
 
   const triggerSimultaneousRides = () => {
@@ -1108,7 +1325,9 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (overlayPref.enableSoundAlerts || drivingMode.soundAlerts) {
       playCopilotSound('good');
     }
-    speakCopilotMessage('Chamadas simultâneas! Uber e 99 tocando juntas. Uber é mais lucrativa com nota 94.');
+    if (overlayPref.enableVoiceAlerts || drivingMode.voiceAlerts) {
+      speakCopilotMessage('Uber e 99. Uber melhor, nota 94.');
+    }
   };
 
   const updateDecisionRules = (updated: Partial<DecisionRule>) => {
@@ -1356,13 +1575,22 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setRides([]);
     setActiveSession(null);
     setCurrentGpsDistance(0);
+    setCurrentSpeedKmH(0);
     setLastAnalyzedRide(null);
     try {
       localStorage.setItem(`${STORAGE_KEY}_sessions`, JSON.stringify([]));
       localStorage.setItem(`${STORAGE_KEY}_expenses`, JSON.stringify([]));
+      localStorage.setItem(`${STORAGE_KEY}_fuel`, JSON.stringify([]));
       localStorage.setItem(`${STORAGE_KEY}_fuelEntries`, JSON.stringify([]));
       localStorage.setItem(`${STORAGE_KEY}_rides`, JSON.stringify([]));
+      localStorage.removeItem(`${STORAGE_KEY}_active_session`);
       localStorage.removeItem(`${STORAGE_KEY}_activeSession`);
+      // Also clear legacy v1 keys
+      localStorage.removeItem('drivewise_state_v1_sessions');
+      localStorage.removeItem('drivewise_state_v1_expenses');
+      localStorage.removeItem('drivewise_state_v1_fuel');
+      localStorage.removeItem('drivewise_state_v1_rides');
+      localStorage.removeItem('drivewise_state_v1_active_session');
     } catch {}
   };
 
@@ -1388,6 +1616,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         gpsStatus,
         gpsAccuracy,
         currentCoords,
+        currentSpeedKmH,
         toggleMovementSimulation,
         startJourney,
         endJourney,
@@ -1462,6 +1691,21 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isMinimalistMode,
         setIsMinimalistMode,
         toggleMinimalistMode,
+
+        // Subscription & Trial
+        subscription,
+        isSubscriptionSystemOnline: subscription.isSystemOnline,
+        isTrialActive,
+        isTrialExpired,
+        trialDaysRemaining,
+        isPro,
+        isSubscriptionModalOpen,
+        setIsSubscriptionModalOpen,
+        toggleSubscriptionSystem,
+        activateSubscription,
+        cancelSubscription,
+        resetTrial,
+        simulateTrialDaysRemaining,
       }}
     >
       {children}
