@@ -24,6 +24,7 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { AuthModal } from './components/AuthModal';
 import { SubscriptionModal } from './components/subscription/SubscriptionModal';
 import { ProductLandingPage } from './components/landing/ProductLandingPage';
+import { AuthScreen } from './components/auth/AuthScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { safeStorage } from './utils/safeStorage';
 
@@ -88,11 +89,16 @@ function DriveWiseApp() {
   }, []);
 
   const {
+    firebaseUser,
+    isAuthLoading,
+    user,
     isSimulatorOpen,
     setIsSimulatorOpen,
     isOnboardingOpen,
     setIsOnboardingOpen,
+    hasOverlayPermission,
     isOverlayPermissionModalOpen,
+    setIsOverlayPermissionModalOpen,
     grantOverlayPermission,
     dismissOverlayPermissionModal,
     isAuthModalOpen,
@@ -112,6 +118,31 @@ function DriveWiseApp() {
     return (
       <ProductLandingPage
         onEnterApp={handleEnterApp}
+      />
+    );
+  }
+
+  // 1. Loading State while Firebase Auth initializes
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-[#050608] flex flex-col items-center justify-center text-slate-300 gap-3">
+        <div className="w-10 h-10 border-3 border-emerald-500/20 border-t-emerald-400 rounded-full animate-spin" />
+        <span className="text-xs font-mono text-emerald-400 font-bold uppercase tracking-wider">
+          Iniciando DriveWise Copiloto...
+        </span>
+      </div>
+    );
+  }
+
+  // 2. Authentication Screen: New and unauthenticated users must login/register first!
+  if (!firebaseUser) {
+    return (
+      <AuthScreen
+        onSuccess={() => {
+          if (!user.hasCompletedOnboarding) {
+            setIsOnboardingOpen(true);
+          }
+        }}
       />
     );
   }
@@ -220,7 +251,12 @@ function DriveWiseApp() {
       />
       <OnboardingModal
         isOpen={isOnboardingOpen}
-        onClose={() => setIsOnboardingOpen(false)}
+        onClose={() => {
+          setIsOnboardingOpen(false);
+          if (!hasOverlayPermission) {
+            setIsOverlayPermissionModalOpen(true);
+          }
+        }}
       />
       <OverlayPermissionModal
         isOpen={isOverlayPermissionModalOpen && !isOnboardingOpen}

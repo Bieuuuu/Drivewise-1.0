@@ -44,6 +44,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     setIsOnboardingOpen,
     toggleDrivingMode,
     isMinimalistMode,
+    firebaseUser,
   } = useDriveWise();
 
   // Metrics for today
@@ -122,7 +123,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       <div className="pt-1 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight">
-            {getGreeting()}, {user.name}
+            {getGreeting()}, {user.name || firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'Motorista'}
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
             {isMinimalistMode ? 'Painel Essencial' : 'Visão geral do seu dia'}

@@ -150,6 +150,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
     } catch {
       // ignore
     }
+    updateUser({ hasCompletedOnboarding: true });
     onClose();
   };
 
@@ -169,7 +170,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
     { num: 2, title: 'Eficiência Financeira', sub: 'Redução de KM morto' },
     { num: 3, title: 'Calibração do Cockpit', sub: 'Seu custo real por KM' },
     { num: 4, title: 'Telemetria & Áudio', sub: 'Alertas em viva-voz' },
-    { num: 5, title: 'Ativação & Backup', sub: '7 dias VIP sem cartão' },
+    { num: 5, title: 'Ativação & Backup', sub: '10 dias VIP sem cartão' },
   ];
 
   return (
@@ -769,7 +770,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
               )}
 
               <div className="text-center text-[10px] font-mono text-slate-500">
-                Sem necessidade de cadastrar cartão. Cancelamento automático após os 7 dias de avaliação.
+                Sem necessidade de cadastrar cartão. 10 dias de degustação gratuita sem cobrança antecipada.
               </div>
             </div>
           )}

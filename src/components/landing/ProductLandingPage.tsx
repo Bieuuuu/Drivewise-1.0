@@ -47,6 +47,7 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
   const [installDeviceTab, setInstallDeviceTab] = useState<'android' | 'ios'>('android');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
 
   // Accessible IDs for inputs
   const dailyKmInputId = useId();
@@ -57,6 +58,9 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      if (typeof window !== 'undefined') {
+        window.deferredInstallPrompt = e;
+      }
     };
 
     try {
@@ -81,20 +85,32 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
   }, []);
 
   const handleInstallClick = () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult: any) => {
-        if (choiceResult.outcome === 'accepted') {
-          setIsInstalled(true);
-        }
-        setDeferredPrompt(null);
-      });
-    } else if (onInstallPWA) {
-      onInstallPWA();
-    } else {
-      const element = document.getElementById('instalacao');
-      element?.scrollIntoView({ behavior: 'smooth' });
+    const promptEvent = deferredPrompt || (typeof window !== 'undefined' ? window.deferredInstallPrompt : null);
+    if (promptEvent && typeof promptEvent.prompt === 'function') {
+      try {
+        promptEvent.prompt();
+        promptEvent.userChoice.then((choiceResult: any) => {
+          if (choiceResult && choiceResult.outcome === 'accepted') {
+            setIsInstalled(true);
+            try {
+              localStorage.setItem('drivewise_app_downloaded', 'true');
+            } catch {}
+            if (onEnterApp) onEnterApp();
+          }
+          setDeferredPrompt(null);
+          if (typeof window !== 'undefined') window.deferredInstallPrompt = null;
+        });
+        return;
+      } catch (e) {
+        console.warn('Install prompt error:', e);
+      }
     }
+
+    if (onInstallPWA) {
+      onInstallPWA();
+    }
+    // Always open the explicit download modal so the user has immediate visual steps
+    setIsInstallModalOpen(true);
   };
 
   // Real-world operational financial model
@@ -167,22 +183,13 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
             </a>
           </nav>
 
-          {/* Action Buttons: App Access & Download */}
+          {/* Action Button: Download */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {onEnterApp && (
-              <button
-                type="button"
-                onClick={onEnterApp}
-                className="min-h-[42px] sm:min-h-[44px] px-3 sm:px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] text-white font-bold text-xs sm:text-sm border border-white/[0.1] transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-              >
-                <span>Acessar Painel</span>
-                <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              </button>
-            )}
             <button
+              id="btn-nav-download"
               type="button"
               onClick={handleInstallClick}
-              className="min-h-[42px] sm:min-h-[44px] px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-extrabold text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer whitespace-nowrap"
+              className="min-h-[42px] sm:min-h-[44px] px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-extrabold text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer whitespace-nowrap"
             >
               <Download className="w-4 h-4 text-black shrink-0" />
               <span className="hidden xs:inline sm:inline">Baixar Aplicativo Grátis</span>
@@ -217,26 +224,17 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
             O único <strong>Copiloto Veicular em tempo real</strong> que calcula o lucro líquido por km e por hora, analisa disputas simultâneas da Uber e 99 e bloqueia chamadas no prejuízo antes de você aceitar.
           </p>
 
-          {/* Primary Action Buttons */}
-          <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-3.5 max-w-lg mx-auto">
+          {/* Primary Action Button */}
+          <div className="mt-6 sm:mt-8 flex items-center justify-center max-w-md mx-auto">
             <button
+              id="btn-hero-download"
               type="button"
               onClick={handleInstallClick}
-              className="w-full sm:w-auto min-h-[50px] px-6 sm:px-7 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-500/25 transition-all cursor-pointer"
+              className="w-full sm:w-auto min-h-[52px] px-8 sm:px-10 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-500/25 transition-all cursor-pointer"
             >
               <Download className="w-5 h-5 fill-black shrink-0" />
-              <span>Baixar App Grátis</span>
+              <span>Baixar Aplicativo Grátis</span>
             </button>
-            {onEnterApp && (
-              <button
-                type="button"
-                onClick={onEnterApp}
-                className="w-full sm:w-auto min-h-[50px] px-6 sm:px-7 py-3.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:scale-[0.98] text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 border border-white/[0.12] transition-all cursor-pointer"
-              >
-                <span>Acessar Painel Web</span>
-                <ArrowRight className="w-4 h-4 text-emerald-400 shrink-0" />
-              </button>
-            )}
           </div>
 
           {/* Operational Reassurance Badges */}
@@ -1319,6 +1317,172 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                 className="min-h-[44px] px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs sm:text-sm cursor-pointer"
               >
                 Entendi e Concordo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 14. INSTALL / DOWNLOAD APP MODAL */}
+      {isInstallModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#0C0F14] border border-white/[0.12] rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-white/[0.08] flex items-center justify-between bg-[#0A0D12]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                  <Download className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Baixar Aplicativo DriveWise</h3>
+                  <p className="text-xs text-slate-400">Instalação direta e sem loja de apps</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInstallModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 flex items-center justify-center text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-5">
+              {/* Platform Selector */}
+              <div className="grid grid-cols-2 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                <button
+                  type="button"
+                  onClick={() => setInstallDeviceTab('android')}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                    installDeviceTab === 'android'
+                      ? 'bg-emerald-500 text-black shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Android (Chrome)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInstallDeviceTab('ios')}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                    installDeviceTab === 'ios'
+                      ? 'bg-emerald-500 text-black shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  iPhone (Safari)
+                </button>
+              </div>
+
+              {/* Instructions per device */}
+              {installDeviceTab === 'android' ? (
+                <div className="space-y-3.5 bg-black/40 p-4 rounded-2xl border border-white/[0.06] text-xs text-slate-300">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                      1
+                    </div>
+                    <div>
+                      <strong className="text-white block">Abra o menu do Chrome</strong>
+                      Toque nos <strong>três pontinhos (⋮)</strong> no canto superior direito da tela do seu navegador.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                      2
+                    </div>
+                    <div>
+                      <strong className="text-white block">Toque em "Instalar aplicativo"</strong>
+                      Ou "Adicionar à tela inicial". Uma janela de confirmação oficial do Android será exibida.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                      3
+                    </div>
+                    <div>
+                      <strong className="text-white block">Pronto! O ícone é criado no celular</strong>
+                      O app funcionará com janela flutuante, tela cheia e modo offline-first.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3.5 bg-black/40 p-4 rounded-2xl border border-white/[0.06] text-xs text-slate-300">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                      1
+                    </div>
+                    <div>
+                      <strong className="text-white block">Toque em Compartilhar no Safari</strong>
+                      No rodapé do Safari, clique no ícone quadrado com uma <strong>seta apontando para cima (↑)</strong>.
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                      2
+                    </div>
+                    <div>
+                      <strong className="text-white block">Selecione "Adicionar à Tela de Início"</strong>
+                      Role o menu para baixo e toque na opção com o símbolo de mais (+).
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-xs">
+                      3
+                    </div>
+                    <div>
+                      <strong className="text-white block">Toque em "Adicionar"</strong>
+                      O ícone do DriveWise aparecerá imediatamente na grade de aplicativos do seu iPhone.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Try trigger prompt again if available */}
+              {deferredPrompt && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((cr: any) => {
+                      if (cr?.outcome === 'accepted') {
+                        try {
+                          localStorage.setItem('drivewise_app_downloaded', 'true');
+                        } catch {}
+                        if (onEnterApp) onEnterApp();
+                      }
+                    });
+                  }}
+                  className="w-full h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Instalar Agora no Aparelho</span>
+                </button>
+              )}
+            </div>
+
+            {/* Modal Footer: Confirmed download and launch app */}
+            <div className="p-4 border-t border-white/[0.08] bg-[#0A0D12] flex flex-col sm:flex-row items-center justify-between gap-3">
+              <span className="text-[11px] text-slate-400 text-center sm:text-left">
+                Já baixou ou instalou na tela inicial?
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.setItem('drivewise_app_downloaded', 'true');
+                  } catch {}
+                  setIsInstallModalOpen(false);
+                  if (onEnterApp) onEnterApp();
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white/[0.1] hover:bg-white/[0.15] text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/[0.1] cursor-pointer transition-all"
+              >
+                <span>Abrir Aplicativo</span>
+                <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
               </button>
             </div>
           </div>

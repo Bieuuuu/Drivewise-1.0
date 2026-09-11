@@ -26,8 +26,8 @@ export const defaultDecisionRules: DecisionRule = {
 export const defaultVehicleProfiles: VehicleCostProfile[] = [
   {
     id: 'veh-1',
-    name: 'Chevrolet Onix Plus 1.0 Turbo',
-    plate: 'BRA-2026',
+    name: 'Meu Veículo',
+    plate: '',
     type: 'Carro',
     fuelType: 'Gasolina',
     avgConsumptionKmPerLiter: 11.5,

@@ -89,6 +89,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
     toggleSubscriptionSystem,
     resetTrial,
     simulateTrialDaysRemaining,
+    isAdmin,
   } = useDriveWise();
 
   const [cloudToast, setCloudToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -419,55 +420,57 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
         </div>
       </div>
 
-      {/* DRIVEWISE PRO SUBSCRIPTION STATUS TILE */}
-      <div className="rounded-2xl p-4 sm:p-5 border border-emerald-500/30 bg-gradient-to-r from-emerald-950/25 via-[#0C0C0D] to-[#0C0C0D] relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
-          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400 shadow-sm">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-extrabold text-white text-sm">DriveWise PRO</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
-                  R$ 9,99/mês • 10 Dias Grátis
-                </span>
+      {/* DRIVEWISE PRO SUBSCRIPTION STATUS TILE (ADMIN-ONLY VISIBILITY) */}
+      {isAdmin && (
+        <div className="rounded-2xl p-4 sm:p-5 border border-emerald-500/30 bg-gradient-to-r from-emerald-950/25 via-[#0C0C0D] to-[#0C0C0D] relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
+            <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-400 shadow-sm">
+                <Sparkles className="w-5 h-5" />
               </div>
-              <div className="text-xs text-slate-300 mt-1">
-                {!isSubscriptionSystemOnline ? (
-                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>Modo de Testes Beta Ativo: Sistema de cobrança OFFLINE • Recursos 100% liberados</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-extrabold text-white text-sm">DriveWise PRO</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
+                    Painel do Administrador
                   </span>
-                ) : subscription.isSubscribed ? (
-                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>Assinatura Ativa (Renovação mensal em {subscription.nextBillingDate ? new Date(subscription.nextBillingDate).toLocaleDateString('pt-BR') : '30 dias'})</span>
-                  </span>
-                ) : isTrialActive ? (
-                  <span className="flex items-center gap-1.5 text-amber-400 font-medium">
-                    <Clock className="w-3.5 h-3.5 shrink-0" />
-                    <span>Período Gratuito Ativo: {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia restante' : 'dias restantes'}</span>
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-rose-400 font-medium">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Período de testes de 10 dias encerrado. Assine por R$ 9,99/mês.</span>
-                  </span>
-                )}
+                </div>
+                <div className="text-xs text-slate-300 mt-1">
+                  {!isSubscriptionSystemOnline ? (
+                    <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>Modo de Testes Beta Ativo: Sistema de cobrança OFFLINE • Recursos 100% liberados</span>
+                    </span>
+                  ) : subscription.isSubscribed ? (
+                    <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>Assinatura Ativa (Renovação mensal em {subscription.nextBillingDate ? new Date(subscription.nextBillingDate).toLocaleDateString('pt-BR') : '30 dias'})</span>
+                    </span>
+                  ) : isTrialActive ? (
+                    <span className="flex items-center gap-1.5 text-amber-400 font-medium">
+                      <Clock className="w-3.5 h-3.5 shrink-0" />
+                      <span>Período Gratuito Ativo: {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia restante' : 'dias restantes'}</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-rose-400 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Período de testes de 10 dias encerrado. Assine por R$ 9,99/mês.</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => setIsSubscriptionModalOpen(true)}
-            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all cursor-pointer shadow-sm"
-          >
-            <span>Gerenciar Assinatura</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setIsSubscriptionModalOpen(true)}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all cursor-pointer shadow-sm"
+            >
+              <span>Gerenciar Assinatura (Admin)</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* MINIMALIST MODE VIEW: Displays strictly what is essential */}
       {isMinimalistMode ? (
@@ -1461,27 +1464,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
                 <Trash2 className="w-4 h-4 shrink-0" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'Deseja realmente restaurar os dados de demonstração iniciais? Seus dados atuais serão substituídos pelos exemplos de teste.'
-                    )
-                  ) {
-                    resetToSampleData();
-                    setRestoreStatusToast({
-                      success: true,
-                      message: 'Dados demonstrativos restaurados com sucesso.',
-                    });
-                    setTimeout(() => setRestoreStatusToast(null), 5000);
-                  }
-                }}
-                className="w-full py-2.5 px-4 rounded-xl bg-white/[0.04] hover:bg-rose-500/15 active:scale-98 text-xs font-medium text-slate-400 hover:text-rose-400 border border-white/[0.06] hover:border-rose-500/30 flex items-center justify-between transition-all"
-              >
-                <span>Restaurar Demonstração Inicial</span>
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Deseja realmente restaurar os dados de demonstração iniciais? Seus dados atuais serão substituídos pelos exemplos de teste.'
+                      )
+                    ) {
+                      resetToSampleData();
+                      setRestoreStatusToast({
+                        success: true,
+                        message: 'Dados demonstrativos restaurados com sucesso.',
+                      });
+                      setTimeout(() => setRestoreStatusToast(null), 5000);
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-white/[0.04] hover:bg-rose-500/15 active:scale-98 text-xs font-medium text-slate-400 hover:text-rose-400 border border-white/[0.06] hover:border-rose-500/30 flex items-center justify-between transition-all"
+                >
+                  <span>Restaurar Demonstração Inicial (Admin)</span>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
 
               {/* Product Presentation / Landing Page Link */}
               {onOpenLanding && (

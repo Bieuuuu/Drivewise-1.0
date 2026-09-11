@@ -32,6 +32,7 @@ export interface UserProfile {
   weeklyGoal: number;
   monthlyGoal: number;
   hoursGoalWeekly: number;
+  hasCompletedOnboarding?: boolean;
   notificationsEnabled: {
     nearGoal: boolean;
     peakHoursReminder: boolean;

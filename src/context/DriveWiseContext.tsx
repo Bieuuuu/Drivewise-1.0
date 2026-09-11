@@ -44,17 +44,25 @@ import {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { syncAllToCloud, fetchAllFromCloud } from '../services/cloudSync';
 
+const ADMIN_EMAIL = 'gabrieulopezz@gmail.com';
+
 interface DriveWiseContextType {
   // FIREBASE CLOUD & USER
   firebaseUser: FirebaseUser | null;
+  isAdmin: boolean;
   isAuthLoading: boolean;
   cloudSyncStatus: 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
   lastCloudSync: Date | null;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  loginWithEmailPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerWithEmailPassword: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logoutFromCloud: () => Promise<void>;
   syncDataToCloud: () => Promise<{ success: boolean; error?: string }>;
   isCloudConfigured: boolean;
@@ -581,26 +589,32 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setCloudSyncStatus('syncing');
         try {
           const cloudRes = await fetchAllFromCloud(authUser.uid);
-          if (cloudRes.success && cloudRes.data && cloudRes.data.sessions && cloudRes.data.sessions.length > 0) {
-            setSessions(cloudRes.data.sessions);
+          if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
+            setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
+            setSessions(cloudRes.data.sessions || []);
             if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
             if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
-            if (cloudRes.data.rides && cloudRes.data.rides.length > 0) setRides(cloudRes.data.rides);
-            if (cloudRes.data.user) setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
+            if (cloudRes.data.rides) setRides(cloudRes.data.rides);
             setCloudSyncStatus('synced');
             setLastCloudSync(new Date());
           } else {
-            // New user in cloud: migrate local state to cloud
+            // New user: fresh zeroed data with authenticated name and email!
+            const freshUser: UserProfile = {
+              ...initialUserProfile,
+              name: authUser.displayName || authUser.email?.split('@')[0] || 'Motorista',
+              email: authUser.email || '',
+            };
+            setUser(freshUser);
+            setSessions([]);
+            setExpenses([]);
+            setFuelEntries([]);
+            setRides([]);
             await syncAllToCloud(authUser.uid, {
-              user: {
-                ...user,
-                name: authUser.displayName || user.name,
-                email: authUser.email || user.email,
-              },
-              sessions,
-              expenses,
-              fuelEntries,
-              rides,
+              user: freshUser,
+              sessions: [],
+              expenses: [],
+              fuelEntries: [],
+              rides: [],
             });
             setCloudSyncStatus('synced');
             setLastCloudSync(new Date());
@@ -611,11 +625,22 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       } else {
         setCloudSyncStatus('idle');
+        setUser(initialUserProfile);
+        setSessions([]);
+        setExpenses([]);
+        setFuelEntries([]);
+        setRides([]);
       }
     });
 
     return () => unsubscribe();
   }, []);
+
+  const isAdmin = useMemo(() => {
+    return Boolean(
+      firebaseUser?.email && firebaseUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+    );
+  }, [firebaseUser?.email]);
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -624,23 +649,29 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (result.user) {
         setFirebaseUser(result.user);
         const cloudRes = await fetchAllFromCloud(result.user.uid);
-        if (cloudRes.success && cloudRes.data && cloudRes.data.sessions && cloudRes.data.sessions.length > 0) {
-          setSessions(cloudRes.data.sessions);
+        if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
+          setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
+          setSessions(cloudRes.data.sessions || []);
           if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
           if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
-          if (cloudRes.data.rides && cloudRes.data.rides.length > 0) setRides(cloudRes.data.rides);
-          if (cloudRes.data.user) setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
+          if (cloudRes.data.rides) setRides(cloudRes.data.rides);
         } else {
+          const freshUser: UserProfile = {
+            ...initialUserProfile,
+            name: result.user.displayName || result.user.email?.split('@')[0] || 'Motorista',
+            email: result.user.email || '',
+          };
+          setUser(freshUser);
+          setSessions([]);
+          setExpenses([]);
+          setFuelEntries([]);
+          setRides([]);
           await syncAllToCloud(result.user.uid, {
-            user: {
-              ...user,
-              name: result.user.displayName || user.name,
-              email: result.user.email || user.email,
-            },
-            sessions,
-            expenses,
-            fuelEntries,
-            rides,
+            user: freshUser,
+            sessions: [],
+            expenses: [],
+            fuelEntries: [],
+            rides: [],
           });
         }
         setCloudSyncStatus('synced');
@@ -660,11 +691,103 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  const loginWithEmailPassword = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      setIsAuthLoading(true);
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      if (result.user) {
+        setFirebaseUser(result.user);
+        setIsAuthLoading(false);
+        return { success: true };
+      }
+      setIsAuthLoading(false);
+      return { success: false, error: 'Credenciais inválidas.' };
+    } catch (err: any) {
+      setIsAuthLoading(false);
+      let msg = 'Falha ao entrar com e-mail e senha.';
+      if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
+        msg = 'E-mail ou senha incorretos.';
+      } else if (err?.code === 'auth/invalid-email') {
+        msg = 'Formato de e-mail inválido.';
+      } else if (err?.message) {
+        msg = err.message;
+      }
+      return { success: false, error: msg };
+    }
+  };
+
+  const registerWithEmailPassword = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      setIsAuthLoading(true);
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      if (result.user) {
+        try {
+          await updateProfile(result.user, { displayName: name });
+        } catch {
+          // ignore profile update error
+        }
+        setFirebaseUser(result.user);
+        const freshUser: UserProfile = {
+          ...initialUserProfile,
+          name: name || 'Motorista',
+          email: email,
+        };
+        setUser(freshUser);
+        setSessions([]);
+        setExpenses([]);
+        setFuelEntries([]);
+        setRides([]);
+        try {
+          await syncAllToCloud(result.user.uid, {
+            user: freshUser,
+            sessions: [],
+            expenses: [],
+            fuelEntries: [],
+            rides: [],
+          });
+        } catch {
+          // ignore
+        }
+        setIsAuthLoading(false);
+        return { success: true };
+      }
+      setIsAuthLoading(false);
+      return { success: false, error: 'Falha ao cadastrar.' };
+    } catch (err: any) {
+      setIsAuthLoading(false);
+      let msg = 'Falha ao cadastrar.';
+      if (err?.code === 'auth/email-already-in-use') {
+        msg = 'Este e-mail já está em uso por outra conta.';
+      } else if (err?.code === 'auth/weak-password') {
+        msg = 'A senha informada é fraca. Use pelo menos 6 caracteres.';
+      } else if (err?.code === 'auth/invalid-email') {
+        msg = 'Formato de e-mail inválido.';
+      } else if (err?.message) {
+        msg = err.message;
+      }
+      return { success: false, error: msg };
+    }
+  };
+
   const logoutFromCloud = async (): Promise<void> => {
     try {
       await signOut(auth);
       setFirebaseUser(null);
+      setUser(initialUserProfile);
+      setSessions([]);
+      setExpenses([]);
+      setFuelEntries([]);
+      setRides([]);
       setCloudSyncStatus('idle');
+      try {
+        localStorage.removeItem(`${STORAGE_KEY}_user`);
+        localStorage.removeItem(`${STORAGE_KEY}_sessions`);
+        localStorage.removeItem(`${STORAGE_KEY}_expenses`);
+        localStorage.removeItem(`${STORAGE_KEY}_fuel`);
+        localStorage.removeItem(`${STORAGE_KEY}_rides`);
+        localStorage.removeItem('drivewise_user_entered_app');
+        localStorage.removeItem('drivewise_state_v1_user');
+      } catch {}
     } catch (err) {
       console.warn('Sign out error:', err);
     }
@@ -1600,10 +1723,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         user,
         updateUser,
         firebaseUser,
+        isAdmin,
         isAuthLoading,
         cloudSyncStatus,
         lastCloudSync,
         loginWithGoogle,
+        loginWithEmailPassword,
+        registerWithEmailPassword,
         logoutFromCloud,
         syncDataToCloud,
         isCloudConfigured,

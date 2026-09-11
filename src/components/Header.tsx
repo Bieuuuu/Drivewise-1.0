@@ -29,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
     isTrialActive,
     trialDaysRemaining,
     setIsSubscriptionModalOpen,
+    isAdmin,
   } = useDriveWise();
 
   const isProfileActive = activeTab === 'profile';
@@ -71,40 +72,42 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              {/* Plan / Subscription Badge */}
-              <button
-                type="button"
-                onClick={() => setIsSubscriptionModalOpen(true)}
-                title={
-                  !isSubscriptionSystemOnline
-                    ? 'DriveWise PRO (Modo de Testes - Cobrança Offline) • Ver Plano R$ 9,99/mês'
-                    : subscription.isSubscribed
-                    ? 'DriveWise PRO Ativo'
-                    : isTrialActive
-                    ? `Período de Testes: ${trialDaysRemaining} dias restantes`
-                    : 'Período gratuito expirado • Assine por R$ 9,99/mês'
-                }
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black transition-all cursor-pointer ${
-                  !isSubscriptionSystemOnline
-                    ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25'
-                    : subscription.isSubscribed
-                    ? 'text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 hover:bg-emerald-500/25'
-                    : isTrialActive
-                    ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25'
-                    : 'text-rose-300 bg-rose-500/20 border border-rose-500/35 hover:bg-rose-500/30'
-                }`}
-              >
-                <Sparkles className="w-3 h-3" />
-                <span className="text-[9px] leading-none">
-                  {!isSubscriptionSystemOnline
-                    ? 'PRO (Beta)'
-                    : subscription.isSubscribed
-                    ? 'PRO'
-                    : isTrialActive
-                    ? `10D (${trialDaysRemaining}d)`
-                    : 'Assinar'}
-                </span>
-              </button>
+              {/* Plan / Subscription Badge (ADMIN ONLY) */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setIsSubscriptionModalOpen(true)}
+                  title={
+                    !isSubscriptionSystemOnline
+                      ? 'DriveWise PRO (Modo de Testes - Cobrança Offline) • Ver Plano R$ 9,99/mês'
+                      : subscription.isSubscribed
+                      ? 'DriveWise PRO Ativo'
+                      : isTrialActive
+                      ? `Período de Testes: ${trialDaysRemaining} dias restantes`
+                      : 'Período gratuito expirado • Assine por R$ 9,99/mês'
+                  }
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black transition-all cursor-pointer ${
+                    !isSubscriptionSystemOnline
+                      ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25'
+                      : subscription.isSubscribed
+                      ? 'text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 hover:bg-emerald-500/25'
+                      : isTrialActive
+                      ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25'
+                      : 'text-rose-300 bg-rose-500/20 border border-rose-500/35 hover:bg-rose-500/30'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span className="text-[9px] leading-none">
+                    {!isSubscriptionSystemOnline
+                      ? 'PRO (Beta)'
+                      : subscription.isSubscribed
+                      ? 'PRO'
+                      : isTrialActive
+                      ? `10D (${trialDaysRemaining}d)`
+                      : 'Assinar'}
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* Status Pill strictly single line (white-space: nowrap) */}
