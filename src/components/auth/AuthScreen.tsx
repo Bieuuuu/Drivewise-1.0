@@ -10,6 +10,7 @@ import {
   KeyRound,
   User,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   CheckCircle2,
   AlertCircle,
@@ -21,9 +22,10 @@ import {
 
 interface AuthScreenProps {
   onSuccess?: () => void;
+  onBackToLanding?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess, onBackToLanding }) => {
   const {
     loginWithGoogle,
     loginWithEmailPassword,
@@ -112,6 +114,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
         transition={{ duration: 0.3 }}
         className="w-full max-w-md relative z-10"
       >
+        {onBackToLanding && (
+          <div className="mb-4 flex justify-start">
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs text-slate-300 hover:text-white border border-white/[0.08] transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Voltar para a Apresentação</span>
+            </button>
+          </div>
+        )}
+
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6 space-y-2.5">
           <div className="relative">
@@ -211,6 +226,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                 : 'Cadastrar com Conta Google'}
             </span>
           </button>
+
+          <div className="mt-2 text-center text-[10px] text-slate-400 flex items-center justify-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Autenticação direta oficial Google (sem senhas de terceiros)</span>
+          </div>
 
           {/* Divider */}
           <div className="relative my-5">

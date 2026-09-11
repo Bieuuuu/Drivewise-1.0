@@ -51,21 +51,20 @@ function DriveWiseApp() {
           return 'app';
         }
 
-        // If standalone PWA mode (installed on home screen), open the app dashboard
-        if (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) {
-          return 'app';
-        }
+        // Standalone PWA mode (installed app on home screen) or explicit PWA source
+        const isStandalone =
+          (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+          (window.navigator as any).standalone === true ||
+          params.get('source') === 'pwa';
 
-        // If the user already used the app and has active work or stored preference
-        const savedPref = safeStorage.getItem('drivewise_user_entered_app');
-        if (savedPref === 'true') {
+        if (isStandalone) {
           return 'app';
         }
       }
     } catch (e) {
       console.warn('ViewMode initial state determination warning:', e);
     }
-    // Default to the official public landing page for new visitors
+    // Default to the official public landing page for all web visitors
     return 'landing';
   });
 
@@ -105,6 +104,13 @@ function DriveWiseApp() {
     setIsAuthModalOpen,
   } = useDriveWise();
 
+  // Trigger cockpit onboarding calibration automatically on first login
+  React.useEffect(() => {
+    if (firebaseUser && !user.hasCompletedOnboarding && viewMode === 'app') {
+      setIsOnboardingOpen(true);
+    }
+  }, [firebaseUser, user.hasCompletedOnboarding, viewMode, setIsOnboardingOpen]);
+
   const handleEnterApp = () => {
     try {
       safeStorage.setItem('drivewise_user_entered_app', 'true');
@@ -134,10 +140,11 @@ function DriveWiseApp() {
     );
   }
 
-  // 2. Authentication Screen: New and unauthenticated users must login/register first!
+  // 2. Authentication Screen: Inside the app, users must login/register first!
   if (!firebaseUser) {
     return (
       <AuthScreen
+        onBackToLanding={() => setViewMode('landing')}
         onSuccess={() => {
           if (!user.hasCompletedOnboarding) {
             setIsOnboardingOpen(true);

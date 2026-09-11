@@ -2,7 +2,7 @@
   "name": "DriveWise - Copiloto do Motorista",
   "short_name": "DriveWise",
   "description": "Copiloto financeiro e operacional inteligente para motoristas de aplicativo.",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",
