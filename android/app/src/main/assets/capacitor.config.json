@@ -1,0 +1,9 @@
+{
+	"appId": "com.drivewise.copiloto",
+	"appName": "DriveWise",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	},
+	"plugins": {}
+}

@@ -1,91 +1,66 @@
-name: Compilar APK Android (DriveWise)
+name: Build Android APK (DriveWise)
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, master ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  build-apk:
     name: Gerar APK Nativo Android
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Baixar código do repositório
+      - name: Baixar código do repositório
         uses: actions/checkout@v4
 
-      - name: ☕ Configurar Java JDK 17
+      - name: Configurar Java JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: 🟢 Configurar Node.js 20
+      - name: Configurar Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
 
-      - name: 📦 Instalar dependências
-        run: npm install
+      - name: Instalar dependências
+        run: npm install --legacy-peer-deps
 
-      - name: ⚡ Compilar aplicação Web (Vite)
+      - name: Compilar aplicação Web (Vite)
         run: npm run build
 
-      - name: 🤖 Criar e Sincronizar projeto Android com Capacitor
-        run: |
-          npx cap add android || true
-          npx cap sync android
+      - name: Sincronizar projeto Android com Capacitor
+        run: npx cap sync android
 
-      - name: 🛠️ Injetar Serviços Nativos em Kotlin e Configurações
-        run: |
-          mkdir -p android/app/src/main/java/com/drivewise/copiloto/
-          cp native-android-guide/DriveWiseAccessibilityService.kt android/app/src/main/java/com/drivewise/copiloto/
-          cp native-android-guide/FloatingOverlayService.kt android/app/src/main/java/com/drivewise/copiloto/
-          cp native-android-guide/DriveWiseNativePlugin.kt android/app/src/main/java/com/drivewise/copiloto/
-          mkdir -p android/app/src/main/res/xml/
-          cp native-android-guide/accessibility_service_config.xml android/app/src/main/res/xml/
-          node scripts/prepare-android.js
+      - name: Configurar permissões do Gradle
+        run: chmod +x android/gradlew
 
-      - name: 🔨 Compilar APK Debug com Gradle
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-          cd ..
-          cp android/app/build/outputs/apk/debug/app-debug.apk ./drivewise.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk ./drivewise-copiloto.apk
+      - name: Compilar APK Debug com Gradle
+        working-directory: ./android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: 📤 Salvar APK como Artefato no GitHub Actions
+      - name: Salvar APK como Artefato no GitHub Actions
         uses: actions/upload-artifact@v4
         with:
-          name: drivewise-android-apk
-          path: drivewise.apk
+          name: drivewise-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: 🚀 Publicar Versão e APK no GitHub Releases
+      - name: Publicar Release com o APK
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main'
         with:
-          tag_name: latest
-          name: "DriveWise Copiloto APK (Versão Mais Recente)"
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          name: DriveWise Copiloto ${{ github.ref_name }}
           body: |
-            ## 🚀 APK Nativo Android Oficial - DriveWise Copiloto
-            Este arquivo `.apk` foi gerado automaticamente pelo GitHub Actions com suporte nativo a:
-            - **Sobreposição de tela**: Bolha flutuante em tempo real sobre a Uber e 99.
-            - **Leitura automática (Acessibilidade)**: Detecta os ganhos e quilometragem das chamadas no trânsito.
-            - **Modo Background**: Alertas em viva-voz e cálculo instantâneo de lucro.
-
-            ### 📲 Como instalar no celular:
-            1. Baixe o arquivo **`drivewise.apk`** abaixo.
-            2. Toque no arquivo baixado e selecione **Instalar**.
-            3. Ao abrir pela primeira vez, ative as permissões de **Sobreposição** e **Acessibilidade**.
-          files: |
-            drivewise.apk
-            drivewise-copiloto.apk
+            ## DriveWise Copiloto Nativo Android (.apk)
+            Versão oficial completa com suporte à sobreposição flutuante (bolha sobre Uber e 99) e telemetria em segundo plano.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
