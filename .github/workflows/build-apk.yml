@@ -31,7 +31,9 @@ jobs:
           node-version: 22
 
       - name: Instalar dependências
-        run: npm install --legacy-peer-deps
+        run: |
+          npm install --legacy-peer-deps
+          npm install react-is --save
 
       - name: Compilar aplicação Web (Vite)
         run: npm run build
