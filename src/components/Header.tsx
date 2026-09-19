@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDriveWise } from '../context/DriveWiseContext';
-import { Fuel, PlusCircle, Cloud, CloudCheck, RefreshCw, Sparkles } from 'lucide-react';
+import { Fuel, PlusCircle, Cloud, CheckCircle2, RefreshCw, Sparkles } from 'lucide-react';
 import { DriveWiseLogo } from './DriveWiseLogo';
 import { UserAvatar } from './UserAvatar';
 
@@ -56,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {cloudSyncStatus === 'syncing' ? (
                     <RefreshCw className="w-3 h-3 animate-spin" />
                   ) : (
-                    <CloudCheck className="w-3 h-3" />
+                    <CheckCircle2 className="w-3 h-3" />
                   )}
                   <span className="text-[9px] font-medium leading-none hidden sm:inline">Nuvem</span>
                 </button>

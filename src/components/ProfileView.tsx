@@ -33,7 +33,6 @@ import {
   FileText,
   CheckCircle2,
   Cloud,
-  CloudCheck,
   CloudOff,
   RefreshCw,
   LogIn,
@@ -343,7 +342,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onOpenLanding }) => {
             </button>
           ) : (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium whitespace-nowrap">
-              <CloudCheck className="w-3.5 h-3.5" />
+              <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Nuvem</span>
             </div>
           )}
