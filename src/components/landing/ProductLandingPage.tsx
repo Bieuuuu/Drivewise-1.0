@@ -74,15 +74,20 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
     }
   }, []);
 
+  const OFFICIAL_GITHUB_RELEASE_APK_URL = 'https://github.com/Bieuuuu/DriveWise/releases/latest/download/drivewise.apk';
+
   const [apkDownloadUrl, setApkDownloadUrl] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       try {
-        return localStorage.getItem('drivewise_custom_apk_url') || '/drivewise.apk';
+        const saved = localStorage.getItem('drivewise_custom_apk_url');
+        if (saved && saved !== '/drivewise.apk' && saved.trim().length > 0) {
+          return saved;
+        }
       } catch {
-        return '/drivewise.apk';
+        // ignore
       }
     }
-    return '/drivewise.apk';
+    return OFFICIAL_GITHUB_RELEASE_APK_URL;
   });
 
   const [isConfiguringSource, setIsConfiguringSource] = useState(false);
@@ -93,11 +98,11 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
     if (e) e.preventDefault();
     let url = customUrlInput.trim();
     if (!url) {
-      setApkDownloadUrl('/drivewise.apk');
+      setApkDownloadUrl(OFFICIAL_GITHUB_RELEASE_APK_URL);
       try {
         localStorage.removeItem('drivewise_custom_apk_url');
       } catch {}
-      setSaveMessage({ type: 'success', text: 'Restaurado para arquivo direto (/drivewise.apk).' });
+      setSaveMessage({ type: 'success', text: 'Restaurado para o link oficial de Release.' });
       setTimeout(() => setSaveMessage(null), 3500);
       setIsConfiguringSource(false);
       return;
@@ -109,8 +114,8 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
       url = `https://drive.google.com/uc?export=download&id=${gDriveMatch[1]}`;
     }
 
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
-      setSaveMessage({ type: 'error', text: 'Insira uma URL válida iniciando com https:// ou /' });
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setSaveMessage({ type: 'error', text: 'Insira uma URL válida iniciando com https://' });
       return;
     }
 
@@ -126,12 +131,9 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
   };
 
   const handleDownloadApk = (e?: React.MouseEvent) => {
-    if (apkDownloadUrl === '/drivewise.apk' || !apkDownloadUrl.startsWith('http')) {
-      if (e) e.preventDefault();
-      // Open the install modal so the user gets clear instructions to grab the GitHub artifact or provide a direct release URL
-      setInstallDeviceTab('android');
-      setIsInstallModalOpen(true);
-      return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
 
     setApkDownloaded(true);
@@ -139,10 +141,14 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
       localStorage.setItem('drivewise_app_downloaded', 'true');
     } catch {}
 
+    const targetUrl = apkDownloadUrl && apkDownloadUrl !== '/drivewise.apk'
+      ? apkDownloadUrl
+      : OFFICIAL_GITHUB_RELEASE_APK_URL;
+
     if (typeof window !== 'undefined') {
       try {
         const link = document.createElement('a');
-        link.href = apkDownloadUrl;
+        link.href = targetUrl;
         link.setAttribute('download', 'drivewise.apk');
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
@@ -152,9 +158,9 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
           try {
             document.body.removeChild(link);
           } catch {}
-        }, 200);
+        }, 400);
       } catch {
-        window.location.href = apkDownloadUrl;
+        window.location.href = targetUrl;
       }
     }
   };
@@ -167,9 +173,8 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
       return;
     }
 
-    setInstallDeviceTab('android');
+    // On Android and all other devices: download directly without wizard modal
     handleDownloadApk();
-    setIsInstallModalOpen(true);
   };
 
   // Technical cost modeling
@@ -259,18 +264,14 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
               </button>
             )}
 
-            <a
-              href={apkDownloadUrl}
-              download="drivewise.apk"
-              onClick={(e) => {
-                handleDownloadApk(e);
-                setIsInstallModalOpen(true);
-              }}
-              className="min-h-[40px] px-4 py-2 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-xs flex items-center gap-2 shadow-sm transition-all cursor-pointer no-underline"
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className="min-h-[40px] px-4 py-2 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-xs flex items-center gap-2 shadow-sm transition-all cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-slate-950" />
               <span>Baixar APK</span>
-            </a>
+            </button>
           </div>
         </div>
       </header>
@@ -298,18 +299,14 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
 
           {/* Primary Action Row */}
           <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-md mx-auto">
-            <a
-              href={apkDownloadUrl}
-              download="drivewise.apk"
-              onClick={(e) => {
-                handleDownloadApk(e);
-                setIsInstallModalOpen(true);
-              }}
-              className="w-full sm:w-auto min-h-[48px] px-7 py-3 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-sm flex items-center justify-center gap-2.5 shadow-lg transition-all cursor-pointer no-underline"
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className="w-full sm:w-auto min-h-[48px] px-7 py-3 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-sm flex items-center justify-center gap-2.5 shadow-lg transition-all cursor-pointer"
             >
               <AndroidLogo className="w-4 h-4 text-slate-950" />
               <span>Baixar APK Oficial (.apk)</span>
-            </a>
+            </button>
 
             {onEnterApp && (
               <button
@@ -732,18 +729,14 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                 </div>
               </div>
 
-              <a
-                href={apkDownloadUrl}
-                download="drivewise.apk"
-                onClick={(e) => {
-                  handleDownloadApk(e);
-                  setIsInstallModalOpen(true);
-                }}
-                className="mt-6 w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer no-underline"
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="mt-6 w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-slate-950" />
                 <span>Baixar App e Preservar Essa Margem</span>
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -839,33 +832,14 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                     )}
                   </div>
 
-                  {apkDownloadUrl.startsWith('http') ? (
-                    <a
-                      href={apkDownloadUrl}
-                      download="drivewise.apk"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => {
-                        handleDownloadApk(e);
-                      }}
-                      className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow transition-all cursor-pointer no-underline whitespace-nowrap"
-                    >
-                      <AndroidLogo className="w-4 h-4 text-slate-950" />
-                      <span>Baixar APK Direto (.apk)</span>
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsConfiguringSource(true);
-                        // Scroll to bottom of modal if needed
-                      }}
-                      className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow transition-all cursor-pointer whitespace-nowrap"
-                    >
-                      <Settings2 className="w-4 h-4 text-slate-950" />
-                      <span>Configurar Link / Onde Baixar</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => handleDownloadApk(e)}
+                    className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-white hover:bg-slate-200 active:scale-[0.98] text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <AndroidLogo className="w-4 h-4 text-slate-950" />
+                    <span>Baixar APK Direto (.apk)</span>
+                  </button>
                 </div>
               </div>
             ) : (
@@ -958,14 +932,23 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
             >
               Instalação
             </a>
-            <a
-              href={apkDownloadUrl}
-              download="drivewise.apk"
+            <button
+              type="button"
               onClick={(e) => handleDownloadApk(e)}
               className="text-white hover:text-emerald-400 font-semibold transition-colors cursor-pointer"
             >
               Baixar APK
-            </a>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCustomUrlInput(apkDownloadUrl === OFFICIAL_GITHUB_RELEASE_APK_URL ? '' : apkDownloadUrl);
+                setIsConfiguringSource(true);
+              }}
+              className="text-slate-500 hover:text-slate-300 text-[11px] transition-colors cursor-pointer"
+            >
+              Configurar URL do APK
+            </button>
           </div>
 
           <div className="text-[11px] text-slate-500">
@@ -1022,21 +1005,16 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
         </div>
       )}
 
-      {/* 10. REFINED INSTALLATION WIZARD MODAL */}
-      {isInstallModalOpen && (
+      {/* 10. iOS INSTALLATION MODAL (ONLY FOR APPLE DEVICES) */}
+      {isInstallModalOpen && installDeviceTab === 'ios' && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#090B10] border border-white/[0.14] rounded-3xl max-w-md w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative">
+          <div className="bg-[#090B10] border border-white/[0.14] rounded-3xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden relative">
             <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <DriveWiseLogo size={34} className="border border-white/[0.14]" />
+                <DriveWiseLogo size={32} className="border border-white/[0.14]" />
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-white">Instalar DriveWise</h3>
-                    <span className="px-2 py-0.5 rounded bg-white/[0.08] text-white text-[10px] font-mono">
-                      v2.5
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400">Instalador oficial para motoristas</p>
+                  <h3 className="text-sm font-bold text-white">Instalar no iPhone (iOS)</h3>
+                  <p className="text-xs text-slate-400">Adicionar à Tela de Início via Safari</p>
                 </div>
               </div>
               <button
@@ -1049,176 +1027,28 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4">
-              <div className="p-4 rounded-2xl bg-[#0F131A] border border-white/[0.1] space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <AndroidLogo className="w-3.5 h-3.5 text-white" /> Instalador APK Android
-                  </span>
-                  <span className="font-mono text-[10px] text-slate-400">12.8 MB</span>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Versão oficial completa com sobreposição de tela em tempo real (bolha flutuante sobre a Uber e 99).
-                </p>
-
-                {/* Source status indicator */}
-                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.08] space-y-2">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400 flex items-center gap-1.5 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Origem do Arquivo:
-                    </span>
-                    <span className="text-emerald-400 font-mono text-[10px] font-semibold">
-                      {apkDownloadUrl.startsWith('http') ? 'Link Direto Configurado' : 'GitHub Actions (Compilado)'}
-                    </span>
-                  </div>
-
-                  {!apkDownloadUrl.startsWith('http') ? (
-                    <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/20 text-[11px] text-emerald-200 leading-relaxed space-y-1">
-                      <p className="font-semibold text-emerald-300 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Seu APK foi gerado no GitHub!
-                      </p>
-                      <p className="text-slate-300 text-[10px]">
-                        Na tela do seu <strong>GitHub Actions</strong> (onde apareceu o ícone verde), clique em <strong>Summary</strong> no menu à esquerda e baixe o artefato <strong>drivewise-apk</strong>.
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-
-                {apkDownloadUrl.startsWith('http') ? (
-                  <a
-                    href={apkDownloadUrl}
-                    download="drivewise.apk"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => handleDownloadApk(e)}
-                    className="w-full h-11 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow transition-all cursor-pointer no-underline"
-                  >
-                    {apkDownloaded ? (
-                      <>
-                        <Check className="w-4 h-4 stroke-[3] text-slate-950" />
-                        <span>Download Iniciado • Baixar Novamente</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4 text-slate-950" />
-                        <span>Baixar APK Direto (.apk)</span>
-                      </>
-                    )}
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsConfiguringSource(true);
-                    }}
-                    className="w-full h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow transition-all cursor-pointer"
-                  >
-                    <Settings2 className="w-4 h-4 text-slate-950" />
-                    <span>Configurar Link Direto do APK / GitHub Release</span>
-                  </button>
-                )}
-
-                {apkDownloaded && (
-                  <div className="p-2.5 rounded-xl bg-white/[0.04] border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Download iniciado. Abra a notificação do Android para instalar!</span>
-                  </div>
-                )}
-
-                {/* Toggle configuration for APK URL */}
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsConfiguringSource(!isConfiguringSource);
-                      setCustomUrlInput(apkDownloadUrl === '/drivewise.apk' ? '' : apkDownloadUrl);
-                    }}
-                    className="w-full py-2 px-3 rounded-lg text-[11px] font-medium text-slate-400 hover:text-white hover:bg-white/[0.04] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Settings2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{isConfiguringSource ? 'Ocultar configurações de link' : 'Alterar link de download / Onde hospedar'}</span>
-                  </button>
-
-                  {isConfiguringSource && (
-                    <form onSubmit={handleSaveCustomUrl} className="mt-3 p-3.5 rounded-xl bg-black/40 border border-white/[0.08] space-y-2.5">
-                      <div className="text-[11px] font-semibold text-white flex items-center gap-1.5">
-                        <LinkIcon className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>URL de Download do APK</span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 leading-relaxed">
-                        Cole o link direto do seu APK (Google Drive, Firebase Storage, GitHub Releases, MediaFire ou seu próprio servidor). Links normais do Google Drive são convertidos automaticamente para download direto!
-                      </p>
-                      <input
-                        type="text"
-                        value={customUrlInput}
-                        onChange={(e) => setCustomUrlInput(e.target.value)}
-                        placeholder="Ex: https://drive.google.com/... ou /drivewise.apk"
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-[#050608] border border-white/[0.12] text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/50 font-mono"
-                      />
-                      {saveMessage && (
-                        <div className={`text-[11px] p-2 rounded-lg flex items-center gap-1.5 ${saveMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-300 border border-rose-500/20'}`}>
-                          {saveMessage.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                          <span>{saveMessage.text}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="submit"
-                          className="flex-1 py-1.5 px-3 rounded-lg bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs cursor-pointer transition-colors"
-                        >
-                          Salvar Link
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomUrlInput('');
-                            handleSaveCustomUrl();
-                          }}
-                          className="py-1.5 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 font-semibold text-xs cursor-pointer transition-colors"
-                        >
-                          Padrão Local
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
-              </div>
-
-              {/* Native Architecture Clarification */}
-              <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2 text-xs text-slate-300">
-                <div className="flex items-center gap-2 text-white font-semibold text-xs">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Por que o APK é obrigatório?</span>
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Para flutuar sobre a Uber e 99 enquanto você dirige, o Android exige a permissão de sistema <strong>SYSTEM_ALERT_WINDOW</strong> (Sobreposição de tela) e serviço em primeiro plano, recursos que um navegador ou atalho da web não podem acessar.
-                </p>
-              </div>
-
-              {/* 3 Steps */}
-              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2.5 text-xs text-slate-300">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Etapas no Celular
-                </span>
+            <div className="p-5 space-y-3.5 text-xs text-slate-300">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                No iOS, aplicativos externos funcionam como Web App nativo (PWA) direto pelo Safari:
+              </p>
+              <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2.5">
                 <div className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-white/[0.08] text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
                     1
                   </span>
-                  <span>Baixe o arquivo <strong>drivewise.apk</strong> clicando no botão acima.</span>
+                  <span>No navegador <strong>Safari</strong> do iPhone, toque no botão <strong>Compartilhar</strong> (ícone de quadrado com seta para cima).</span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-white/[0.08] text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
                     2
                   </span>
-                  <span>Abra a notificação do download no celular e confirme a instalação.</span>
+                  <span>Role para baixo e toque em <strong>&ldquo;Adicionar à Tela de Início&rdquo;</strong>.</span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-white/[0.08] text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
                     3
                   </span>
-                  <span>Abra o app e autorize a sobreposição de tela para ativar o copiloto flutuante.</span>
+                  <span>Toque em <strong>Adicionar</strong> no canto superior direito para abrir em tela cheia!</span>
                 </div>
               </div>
             </div>
@@ -1229,9 +1059,76 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                 onClick={() => setIsInstallModalOpen(false)}
                 className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-white font-semibold text-xs transition-colors cursor-pointer"
               >
-                Fechar
+                Entendi
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 11. DEVELOPER / ADMIN APK URL CONFIGURATION MODAL */}
+      {isConfiguringSource && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#090B10] border border-white/[0.14] rounded-3xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden relative">
+            <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-white font-bold text-sm">
+                <Settings2 className="w-4 h-4 text-emerald-400" />
+                <span>Configurar Link do APK Oficial</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConfiguringSource(false)}
+                className="w-8 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCustomUrl} className="p-5 space-y-4">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Defina a URL de onde o arquivo <strong>drivewise.apk</strong> será baixado quando o usuário clicar no botão. Por padrão, aponta para a Release do GitHub.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300 block">
+                  URL Direta do Arquivo .apk
+                </label>
+                <input
+                  type="text"
+                  value={customUrlInput}
+                  onChange={(e) => setCustomUrlInput(e.target.value)}
+                  placeholder={OFFICIAL_GITHUB_RELEASE_APK_URL}
+                  className="w-full px-3 py-2.5 text-xs rounded-xl bg-[#050608] border border-white/[0.14] text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              {saveMessage && (
+                <div className={`text-xs p-3 rounded-xl flex items-center gap-2 ${saveMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-300 border border-rose-500/20'}`}>
+                  {saveMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-rose-400" />}
+                  <span>{saveMessage.text}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Salvar URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomUrlInput('');
+                    handleSaveCustomUrl();
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Restaurar Padrão
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

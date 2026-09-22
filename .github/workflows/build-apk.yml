@@ -52,11 +52,17 @@ jobs:
         working-directory: ./android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Preparar arquivo drivewise.apk
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/drivewise.apk
+
       - name: Salvar APK como Artefato no GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: drivewise-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/debug/drivewise.apk
+            android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
       - name: Publicar ou Atualizar Release no GitHub
@@ -67,8 +73,10 @@ jobs:
           body: |
             ## 📱 DriveWise Copiloto Nativo Android (.apk)
             Instalador oficial compilado automaticamente pelo GitHub Actions.
-            - Baixe o arquivo **app-debug.apk** abaixo diretamente para instalar no celular.
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+            - Toque em **drivewise.apk** para baixar e instalar no celular.
+          files: |
+            android/app/build/outputs/apk/debug/drivewise.apk
+            android/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
         env:
