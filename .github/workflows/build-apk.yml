@@ -59,14 +59,17 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: Publicar Release com o APK
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publicar ou Atualizar Release no GitHub
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
-          name: DriveWise Copiloto ${{ github.ref_name }}
+          tag_name: latest
+          name: DriveWise Copiloto Android Oficial (.apk)
           body: |
-            ## DriveWise Copiloto Nativo Android (.apk)
-            Versão oficial completa com suporte à sobreposição flutuante e telemetria.
+            ## 📱 DriveWise Copiloto Nativo Android (.apk)
+            Instalador oficial compilado automaticamente pelo GitHub Actions.
+            - Baixe o arquivo **app-debug.apk** abaixo diretamente para instalar no celular.
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
