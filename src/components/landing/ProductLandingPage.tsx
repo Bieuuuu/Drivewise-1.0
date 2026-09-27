@@ -74,14 +74,22 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
     }
   }, []);
 
-  const OFFICIAL_GITHUB_RELEASE_APK_URL = 'https://github.com/Bieuuuu/DriveWise/releases/latest/download/drivewise.apk';
+  const OFFICIAL_GITHUB_RELEASE_APK_URL = 'https://github.com/Bieuuuu/Drivewise-1.0/releases/download/latest/drivewise.apk';
 
   const [apkDownloadUrl, setApkDownloadUrl] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('drivewise_custom_apk_url');
-        if (saved && saved !== '/drivewise.apk' && saved.trim().length > 0) {
+        if (
+          saved &&
+          saved !== '/drivewise.apk' &&
+          !saved.includes('github.com/Bieuuuu/Drivewise/') &&
+          !saved.includes('github.com/Bieuuuu/DriveWise/') &&
+          saved.trim().length > 0
+        ) {
           return saved;
+        } else if (saved) {
+          localStorage.removeItem('drivewise_custom_apk_url');
         }
       } catch {
         // ignore
@@ -109,9 +117,9 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
     }
 
     // Auto-convert Google Drive sharing link to direct download link
-    const gDriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    const gDriveMatch = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/);
     if (gDriveMatch && gDriveMatch[1]) {
-      url = `https://drive.google.com/uc?export=download&id=${gDriveMatch[1]}`;
+      url = `https://drive.google.com/uc?export=download&id=${gDriveMatch[1]}&confirm=t`;
     }
 
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -150,7 +158,6 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
         const link = document.createElement('a');
         link.href = targetUrl;
         link.setAttribute('download', 'drivewise.apk');
-        link.target = '_blank';
         link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
@@ -796,7 +803,7 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                     </div>
                     <h3 className="font-semibold text-white text-sm">Download do Arquivo</h3>
                     <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                      Toque no botão abaixo para baixar o instalador oficial <strong>drivewise.apk</strong> (12.8 MB).
+                      Toque no botão abaixo para baixar o instalador oficial <strong>drivewise.apk</strong> (4.7 MB).
                     </p>
                   </div>
 
