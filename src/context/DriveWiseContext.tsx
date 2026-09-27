@@ -686,16 +686,30 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.warn('Google Sign-In error:', err);
       const code = err?.code || '';
       const message = err?.message || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return {
+          success: false,
+          error: 'Janela de autenticação fechada antes de concluir o login.',
+        };
+      }
       if (
         code === 'auth/operation-not-supported-in-this-environment' ||
         code === 'auth/popup-blocked' ||
         code === 'auth/unauthorized-domain' ||
-        message.includes('disallowed_useragent')
+        message.includes('disallowed_useragent') ||
+        message.includes('bad-request')
       ) {
+        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+        if (currentHost && currentHost !== 'drivewise-1-0.vercel.app' && !currentHost.endsWith('.run.app')) {
+          return {
+            success: false,
+            error: `Domínio (${currentHost}) ainda não autorizado no Firebase Auth ou APK desatualizado. Atualize o APK para a nova versão ou entre usando seu E-mail e Senha logo abaixo.`,
+          };
+        }
         return {
           success: false,
           error:
-            'No aplicativo Android nativo, entre ou crie sua conta preenchendo seu E-mail e Senha logo abaixo.',
+            'Não foi possível abrir o login Google neste ambiente. Entre ou crie sua conta preenchendo seu E-mail e Senha logo abaixo.',
         };
       }
       return {

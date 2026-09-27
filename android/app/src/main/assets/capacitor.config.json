@@ -3,7 +3,17 @@
 	"appName": "DriveWise",
 	"webDir": "dist",
 	"server": {
-		"androidScheme": "https"
+		"hostname": "drivewise-1-0.vercel.app",
+		"androidScheme": "https",
+		"allowNavigation": [
+			"drivewise-1-0.vercel.app",
+			"gen-lang-client-0028437993.firebaseapp.com",
+			"*.firebaseapp.com",
+			"accounts.google.com",
+			"*.google.com",
+			"*.googleapis.com",
+			"*.gstatic.com"
+		]
 	},
 	"plugins": {}
 }
