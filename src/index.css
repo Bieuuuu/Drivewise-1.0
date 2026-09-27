@@ -31,6 +31,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.font-display {
+  font-family: 'Syne', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 /* Safe area insets for mobile gesture bars & notches */
 .pb-safe {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
