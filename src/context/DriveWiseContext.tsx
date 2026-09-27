@@ -684,6 +684,20 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err: any) {
       setIsAuthLoading(false);
       console.warn('Google Sign-In error:', err);
+      const code = err?.code || '';
+      const message = err?.message || '';
+      if (
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/popup-blocked' ||
+        code === 'auth/unauthorized-domain' ||
+        message.includes('disallowed_useragent')
+      ) {
+        return {
+          success: false,
+          error:
+            'No aplicativo Android nativo, entre ou crie sua conta preenchendo seu E-mail e Senha logo abaixo.',
+        };
+      }
       return {
         success: false,
         error: err?.message || 'Falha ao autenticar com a conta Google.',

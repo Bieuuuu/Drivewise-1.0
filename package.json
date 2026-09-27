@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "cap:build": "vite build && cap sync",
+    "cap:build": "VITE_NATIVE_APP=true vite build && cap sync",
     "cap:sync": "cap sync",
     "cap:open": "cap open android",
     "cap:add": "cap add android"

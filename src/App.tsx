@@ -27,15 +27,24 @@ import { ProductLandingPage } from './components/landing/ProductLandingPage';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { safeStorage } from './utils/safeStorage';
+import { isInstalledNativeOrPwaApp } from './utils/platformDetection';
 
 function DriveWiseApp() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const isNativeOrInstalledApp = isInstalledNativeOrPwaApp();
+
   const [viewMode, setViewMode] = useState<'app' | 'landing'>(() => {
+    // CRITICAL: Inside the installed Android/iOS APK or installed PWA, NEVER show the landing page!
+    // Always open directly into the app flow (which shows Login/Register first, then the dashboard).
+    if (isInstalledNativeOrPwaApp()) {
+      return 'app';
+    }
+
     try {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         // Explicit query parameters
-        if (params.get('app') === 'true' || params.get('view') === 'app') {
+        if (params.get('app') === 'true' || params.get('view') === 'app' || params.get('source') === 'pwa') {
           return 'app';
         }
         if (params.get('landing') === 'true' || params.get('page') === 'landing') {
@@ -50,26 +59,21 @@ function DriveWiseApp() {
         ) {
           return 'app';
         }
-
-        // Standalone PWA mode (installed app on home screen) or explicit PWA source
-        const isStandalone =
-          (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
-          (window.navigator as any).standalone === true ||
-          params.get('source') === 'pwa';
-
-        if (isStandalone) {
-          return 'app';
-        }
       }
     } catch (e) {
       console.warn('ViewMode initial state determination warning:', e);
     }
-    // Default to the official public landing page for all web visitors
+    // Default to the official public landing page only for standard web browser visitors
     return 'landing';
   });
 
-  // Listen for hash changes to allow seamless switching
+  // Listen for hash changes on web browsers only
   React.useEffect(() => {
+    if (isNativeOrInstalledApp) {
+      setViewMode('app');
+      return;
+    }
+
     const handleHashChange = () => {
       try {
         const hash = window.location.hash;
@@ -85,7 +89,7 @@ function DriveWiseApp() {
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [isNativeOrInstalledApp]);
 
   const {
     firebaseUser,
@@ -106,10 +110,10 @@ function DriveWiseApp() {
 
   // Trigger cockpit onboarding calibration automatically on first login
   React.useEffect(() => {
-    if (firebaseUser && !user.hasCompletedOnboarding && viewMode === 'app') {
+    if (firebaseUser && !user.hasCompletedOnboarding && (viewMode === 'app' || isNativeOrInstalledApp)) {
       setIsOnboardingOpen(true);
     }
-  }, [firebaseUser, user.hasCompletedOnboarding, viewMode, setIsOnboardingOpen]);
+  }, [firebaseUser, user.hasCompletedOnboarding, viewMode, isNativeOrInstalledApp, setIsOnboardingOpen]);
 
   const handleEnterApp = () => {
     try {
@@ -120,7 +124,7 @@ function DriveWiseApp() {
     setViewMode('app');
   };
 
-  if (viewMode === 'landing') {
+  if (viewMode === 'landing' && !isNativeOrInstalledApp) {
     return (
       <ProductLandingPage
         onEnterApp={handleEnterApp}
@@ -160,7 +164,7 @@ function DriveWiseApp() {
         activeTab={activeTab}
         onNavigateToJourney={() => setActiveTab('journey')}
         onNavigateToProfile={() => setActiveTab('profile')}
-        onOpenLanding={() => setViewMode('landing')}
+        onOpenLanding={isNativeOrInstalledApp ? undefined : () => setViewMode('landing')}
       />
 
       {/* Main Content Area with Tab Switching */}
@@ -239,7 +243,7 @@ function DriveWiseApp() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
             >
-              <ProfileView onOpenLanding={() => setViewMode('landing')} />
+              <ProfileView onOpenLanding={isNativeOrInstalledApp ? undefined : () => setViewMode('landing')} />
             </motion.div>
           )}
         </AnimatePresence>
