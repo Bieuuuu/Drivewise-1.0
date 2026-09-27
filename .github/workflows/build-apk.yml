@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-apk:
-    name: Gerar APK Nativo Android
+    name: Gerar APK Nativo Android (Release Assinado)
     runs-on: ubuntu-latest
 
     steps:
@@ -41,6 +41,23 @@ jobs:
       - name: Sincronizar projeto Android com Capacitor
         run: npx cap sync android
 
+      - name: Gerar ícones nativos DriveWise (Mipmap e Adaptive Icons)
+        run: node scripts/generate-android-icons.mjs
+
+      - name: Gerar Keystore Oficial de Release (Assinatura V1 + V2)
+        run: |
+          if [ ! -f android/app/drivewise-release.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/drivewise-release.keystore \
+              -alias drivewise \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass drivewise2026 \
+              -keypass drivewise2026 \
+              -dname "CN=DriveWise Tecnologia, OU=Mobile Engineering, O=DriveWise, L=Sao Paulo, ST=SP, C=BR"
+          fi
+
       - name: Configurar permissões do Gradle e Android SDK
         run: |
           chmod +x android/gradlew
@@ -48,21 +65,22 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" || true
 
-      - name: Compilar APK Debug com Gradle
+      - name: Compilar APK Release Assinado com Gradle
         working-directory: ./android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Preparar arquivo drivewise.apk
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/drivewise.apk
+          cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/drivewise.apk
+          cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/app-debug.apk
 
       - name: Salvar APK como Artefato no GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: drivewise-apk
           path: |
-            android/app/build/outputs/apk/debug/drivewise.apk
-            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/drivewise.apk
+            android/app/build/outputs/apk/release/app-debug.apk
           retention-days: 30
 
       - name: Publicar ou Atualizar Release no GitHub
@@ -71,12 +89,13 @@ jobs:
           tag_name: latest
           name: DriveWise Copiloto Android Oficial (.apk)
           body: |
-            ## 📱 DriveWise Copiloto Nativo Android (.apk)
-            Instalador oficial compilado automaticamente pelo GitHub Actions.
+            ## 📱 DriveWise Copiloto Nativo Android (.apk) — Release v2.5.0
+            Instalador oficial Release assinado (V1 + V2) com ícone oficial DriveWise e permissões compatíveis com Play Protect.
             - Toque em **drivewise.apk** para baixar e instalar no celular.
+            - Caso o Android exiba o aviso padrão de download direto, toque em **Mais detalhes** → **Instalar assim mesmo**.
           files: |
-            android/app/build/outputs/apk/debug/drivewise.apk
-            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/drivewise.apk
+            android/app/build/outputs/apk/release/app-debug.apk
           draft: false
           prerelease: false
         env:

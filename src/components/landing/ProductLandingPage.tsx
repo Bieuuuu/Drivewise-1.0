@@ -1327,9 +1327,10 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
                       Toque na notificação concluída
                     </h3>
                     <p className="text-xs sm:text-sm text-[#9AA0A6] leading-relaxed">
-                      Abra o arquivo baixado e confirme a instalação padrão do
-                      sistema Android sem precisar passar por configurações
-                      complexas.
+                      Abra o arquivo baixado. Se o Android exibir o aviso padrão de
+                      download fora da Play Store, toque em{' '}
+                      <strong className="text-white">Mais detalhes</strong> e depois
+                      em <strong className="text-white">Instalar assim mesmo</strong>.
                     </p>
                   </div>
 
