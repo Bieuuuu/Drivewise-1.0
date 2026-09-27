@@ -34,7 +34,8 @@ import {
   initialRideOpportunities,
 } from '../data/copilotInitialData';
 import { computeDistanceBetweenCoords } from '../utils/calculations';
-import { playCopilotSound, speakCopilotMessage } from '../utils/copilotCalculations';
+import { evaluateRideOpportunity, playCopilotSound, speakCopilotMessage } from '../utils/copilotCalculations';
+import { nativeBridge, isNativeAndroid } from '../services/nativeBridge';
 import {
   auth,
   googleProvider,
@@ -156,9 +157,15 @@ interface DriveWiseContextType {
   isOnboardingOpen: boolean;
   setIsOnboardingOpen: (open: boolean) => void;
   hasOverlayPermission: boolean;
+  hasAccessibilityPermission: boolean;
+  hasLocationPermission: boolean;
+  isNativeOverlayRunning: boolean;
   isOverlayPermissionModalOpen: boolean;
   setIsOverlayPermissionModalOpen: (open: boolean) => void;
-  grantOverlayPermission: () => void;
+  grantOverlayPermission: () => Promise<void>;
+  grantAccessibilityPermission: () => Promise<void>;
+  requestMobileRuntimePermissions: () => Promise<void>;
+  refreshNativePermissions: () => Promise<void>;
   dismissOverlayPermissionModal: () => void;
   isMinimalistMode: boolean;
   setIsMinimalistMode: (value: boolean) => void;
@@ -236,7 +243,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const saved = localStorage.getItem(`${STORAGE_KEY}_expenses`);
       if (saved) {
         const parsed: Expense[] = JSON.parse(saved);
-        return parsed.filter((e) => !e.id.startsWith('exp-'));
+        return parsed.filter((e) => !/^exp-\d{1,3}$/.test(e.id));
       }
       return initialExpenses;
     } catch {
@@ -249,7 +256,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const saved = localStorage.getItem(`${STORAGE_KEY}_fuel`);
       if (saved) {
         const parsed: FuelEntry[] = JSON.parse(saved);
-        return parsed.filter((f) => !f.id.startsWith('fuel-'));
+        return parsed.filter((f) => !/^fuel-\d{1,3}$/.test(f.id));
       }
       return initialFuelEntries;
     } catch {
@@ -272,7 +279,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const saved = localStorage.getItem(`${STORAGE_KEY}_rides`);
       if (saved) {
         const parsed: RideOpportunity[] = JSON.parse(saved);
-        return parsed.filter((r) => !r.id.startsWith('ride-'));
+        return parsed.filter((r) => !/^ride-\d{1,3}$/.test(r.id));
       }
       return initialRideOpportunities;
     } catch {
@@ -338,8 +345,15 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
-  // Floating Overlay Permission State
+  // Floating Overlay & Native Android Permission State
   const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(() => {
+    if (isNativeAndroid()) {
+      try {
+        return Boolean(window.DriveWiseNativeBridge?.checkOverlayPermission?.());
+      } catch {
+        return false;
+      }
+    }
     try {
       return localStorage.getItem('drivewise_overlay_permission_v1') === 'granted';
     } catch {
@@ -347,28 +361,129 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
+  const [hasAccessibilityPermission, setHasAccessibilityPermission] = useState<boolean>(() => {
+    if (isNativeAndroid()) {
+      try {
+        return Boolean(window.DriveWiseNativeBridge?.checkAccessibilityPermission?.());
+      } catch {
+        return false;
+      }
+    }
+    try {
+      return localStorage.getItem('dw_accessibility_permission_granted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [hasLocationPermission, setHasLocationPermission] = useState<boolean>(true);
+  const [isNativeOverlayRunning, setIsNativeOverlayRunning] = useState<boolean>(false);
+
   const [isOverlayPermissionModalOpen, setIsOverlayPermissionModalOpen] = useState<boolean>(() => {
     try {
+      if (isNativeAndroid()) {
+        const nativeOverlayGranted = Boolean(window.DriveWiseNativeBridge?.checkOverlayPermission?.());
+        if (nativeOverlayGranted) return false;
+        const promptSeen = localStorage.getItem('drivewise_overlay_permission_seen') === 'true';
+        return !promptSeen;
+      }
       const granted = localStorage.getItem('drivewise_overlay_permission_v1') === 'granted';
       const promptSeen = localStorage.getItem('drivewise_overlay_permission_seen') === 'true';
-      // If user hasn't seen the overlay permission prompt, display on entrance
       return !granted && !promptSeen;
     } catch {
       return false;
     }
   });
 
-  const grantOverlayPermission = useCallback(() => {
+  const refreshNativePermissions = useCallback(async () => {
+    if (!isNativeAndroid()) {
+      const webGranted = localStorage.getItem('drivewise_overlay_permission_v1') === 'granted';
+      setHasOverlayPermission(webGranted);
+      return;
+    }
+    try {
+      const status = await nativeBridge.checkAllPermissions();
+      setHasOverlayPermission(status.overlay);
+      setHasAccessibilityPermission(status.accessibility);
+      setHasLocationPermission(status.location);
+      setIsNativeOverlayRunning(status.overlayRunning);
+
+      if (status.overlay) {
+        try {
+          localStorage.setItem('drivewise_overlay_permission_v1', 'granted');
+        } catch {}
+        setOverlayPref((prev) => ({ ...prev, isEnabled: true }));
+        if (!status.overlayRunning) {
+          await nativeBridge.startFloatingOverlay();
+          setIsNativeOverlayRunning(true);
+        }
+      }
+    } catch (e) {
+      console.warn('[DriveWise] refreshNativePermissions error:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshNativePermissions();
+    const handlePermUpdate = () => {
+      refreshNativePermissions();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshNativePermissions();
+      }
+    };
+    window.addEventListener('drivewise:permissions-updated', handlePermUpdate);
+    window.addEventListener('focus', handlePermUpdate);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('drivewise:permissions-updated', handlePermUpdate);
+      window.removeEventListener('focus', handlePermUpdate);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [refreshNativePermissions]);
+
+  const grantOverlayPermission = useCallback(async () => {
+    if (isNativeAndroid()) {
+      const current = await nativeBridge.checkOverlayPermission();
+      if (!current.granted) {
+        await nativeBridge.requestOverlayPermission();
+        return;
+      }
+      await nativeBridge.startFloatingOverlay();
+      setHasOverlayPermission(true);
+      setIsNativeOverlayRunning(true);
+      setOverlayPref((prev) => ({ ...prev, isEnabled: true }));
+      try {
+        localStorage.setItem('drivewise_overlay_permission_v1', 'granted');
+        localStorage.setItem('drivewise_overlay_permission_seen', 'true');
+      } catch {}
+      setIsOverlayPermissionModalOpen(false);
+      return;
+    }
+
     try {
       localStorage.setItem('drivewise_overlay_permission_v1', 'granted');
       localStorage.setItem('drivewise_overlay_permission_seen', 'true');
-    } catch {
-      // ignore
-    }
+    } catch {}
     setHasOverlayPermission(true);
     setIsOverlayPermissionModalOpen(false);
     setOverlayPref((prev) => ({ ...prev, isEnabled: true }));
   }, []);
+
+  const grantAccessibilityPermission = useCallback(async () => {
+    await nativeBridge.requestAccessibilityPermission();
+    if (!isNativeAndroid()) {
+      setHasAccessibilityPermission(true);
+    }
+  }, []);
+
+  const requestMobileRuntimePermissions = useCallback(async () => {
+    await nativeBridge.requestRuntimePermissions();
+    setTimeout(() => {
+      refreshNativePermissions();
+    }, 800);
+  }, [refreshNativePermissions]);
 
   const dismissOverlayPermissionModal = useCallback(() => {
     try {
@@ -1010,6 +1125,9 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const startJourney = () => {
+    if (isNativeAndroid()) {
+      nativeBridge.requestRuntimePermissions().catch(() => {});
+    }
     // Count shifts already completed today to determine turn number (e.g. 1º turno, 2º turno)
     const todaySessions = sessions.filter((s) => s.date === CURRENT_DATE_STR);
     const nextShiftNumber = todaySessions.length + 1;
@@ -1158,7 +1276,28 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const activeVehicleProfile: VehicleCostProfile =
     vehicleProfiles.find((v) => v.isActive) || vehicleProfiles[0] || defaultVehicleProfiles[0];
 
-  const addRideOpportunity = (rideData: Omit<RideOpportunity, 'id' | 'createdAt' | 'updatedAt'>): RideOpportunity => {
+  // Sync driver's costPerKm and minNetPerKm with Native Android FloatingOverlayService
+  useEffect(() => {
+    const costPerKm = activeVehicleProfile.manualCostPerKm || 0.75;
+    const minNetPerKm = decisionRules.minNetPerKm || 1.80;
+    nativeBridge.syncOverlayConfig(costPerKm, minNetPerKm).catch(() => {});
+  }, [activeVehicleProfile.manualCostPerKm, decisionRules.minNetPerKm]);
+
+  // Manage Native Android FloatingOverlayService lifecycle when overlayPref.isEnabled changes
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    if (overlayPref.isEnabled && hasOverlayPermission) {
+      nativeBridge.startFloatingOverlay().then((res) => {
+        setIsNativeOverlayRunning(res.success);
+      });
+    } else if (!overlayPref.isEnabled) {
+      nativeBridge.stopFloatingOverlay().then(() => {
+        setIsNativeOverlayRunning(false);
+      });
+    }
+  }, [overlayPref.isEnabled, hasOverlayPermission]);
+
+  const addRideOpportunity = useCallback((rideData: Omit<RideOpportunity, 'id' | 'createdAt' | 'updatedAt'>): RideOpportunity => {
     const now = new Date().toISOString();
     const newRide: RideOpportunity = {
       ...rideData,
@@ -1168,6 +1307,24 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     setRides((prev) => [newRide, ...prev]);
     setLastAnalyzedRide(newRide);
+
+    // Push evaluated ride to Native Android FloatingOverlayService so it shows outside the app
+    const totalDistKm = (newRide.distanceToPassengerKm || 0) + (newRide.estimatedTripDistanceKm || 0);
+    const totalMin = (newRide.estimatedTimeToPassengerMin || 0) + (newRide.estimatedTripTimeMin || 0);
+    nativeBridge
+      .updateOverlayData({
+        platform: newRide.platform,
+        grossValue: newRide.offeredValue,
+        distanceKm: totalDistKm > 0 ? totalDistKm : 5.0,
+        durationMin: totalMin > 0 ? totalMin : 15,
+        netProfit: newRide.netProfit,
+        profitPerKm: newRide.netPerKm,
+        hourlyRate: newRide.netPerHour,
+        score: newRide.score,
+        recommendation: newRide.scoreTier,
+        expand: true,
+      })
+      .catch(() => {});
 
     // Audio & voice triggers based on settings
     if (overlayPref.enableSoundAlerts || drivingMode.soundAlerts) {
@@ -1182,7 +1339,80 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     return newRide;
-  };
+  }, [overlayPref.enableSoundAlerts, overlayPref.enableVoiceAlerts, drivingMode.soundAlerts, drivingMode.isActive, drivingMode.voiceAlerts]);
+
+  // Listen for rides captured outside the app by DriveWiseAccessibilityService
+  useEffect(() => {
+    const handleNativeRideDetected = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        platform?: string;
+        grossValue?: number;
+        totalDistanceKm?: number;
+        durationMinutes?: number;
+      }>;
+      const detail = customEvent.detail;
+      if (!detail || !detail.grossValue || !detail.totalDistanceKm) return;
+
+      const rawPlatform = detail.platform || 'Uber';
+      const platform: RideOpportunity['platform'] =
+        rawPlatform === '99' ? '99' : rawPlatform === 'InDrive' ? 'InDrive' : 'Uber';
+
+      const totalDist = Math.max(0.5, Number(detail.totalDistanceKm));
+      const pickupKm = Number((totalDist * 0.18).toFixed(1));
+      const tripKm = Number(Math.max(0.5, totalDist - pickupKm).toFixed(1));
+      const totalMin = Math.max(4, Number(detail.durationMinutes || Math.round(totalDist * 2.2)));
+      const pickupMin = Math.max(1, Math.round(totalMin * 0.2));
+      const tripMin = Math.max(3, totalMin - pickupMin);
+
+      const evaluated = evaluateRideOpportunity(
+        {
+          platform,
+          offeredValue: Number(detail.grossValue),
+          distanceToPassengerKm: pickupKm,
+          estimatedTripDistanceKm: tripKm,
+          estimatedTimeToPassengerMin: pickupMin,
+          estimatedTripTimeMin: tripMin,
+          surgeMultiplier: 1.0,
+          extraCosts: 0,
+          pickupAddress: `Chamada detectada (${platform})`,
+          dropoffAddress: 'Leitura automática em tempo real',
+        },
+        decisionRules,
+        activeVehicleProfile,
+        user.email || 'user-1',
+        activeSession?.id
+      );
+
+      addRideOpportunity(evaluated);
+    };
+
+    window.addEventListener('drivewise:native-ride-detected', handleNativeRideDetected);
+    return () => {
+      window.removeEventListener('drivewise:native-ride-detected', handleNativeRideDetected);
+    };
+  }, [user.email, decisionRules, activeVehicleProfile, addRideOpportunity]);
+
+  // Automatic debounced Cloud Sync when authenticated
+  useEffect(() => {
+    if (!firebaseUser || isAuthLoading) return;
+    const timer = setTimeout(() => {
+      syncAllToCloud(firebaseUser.uid, {
+        user,
+        sessions,
+        expenses,
+        fuelEntries,
+        rides,
+      })
+        .then((res) => {
+          if (res.success) {
+            setCloudSyncStatus('synced');
+            setLastCloudSync(new Date());
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [firebaseUser, isAuthLoading, user, sessions, expenses, fuelEntries, rides]);
 
   const updateRideOpportunity = (id: string, updated: Partial<RideOpportunity>) => {
     setRides((prev) =>
@@ -1473,6 +1703,21 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setLastAnalyzedRide(uberRide);
     updateOverlayPref({ isExpanded: true });
 
+    nativeBridge
+      .updateOverlayData({
+        platform: uberRide.platform,
+        grossValue: uberRide.offeredValue,
+        distanceKm: uberRide.distanceToPassengerKm + uberRide.estimatedTripDistanceKm,
+        durationMin: uberRide.estimatedTimeToPassengerMin + uberRide.estimatedTripTimeMin,
+        netProfit: uberRide.netProfit,
+        profitPerKm: uberRide.netPerKm,
+        hourlyRate: uberRide.netPerHour,
+        score: uberRide.score,
+        recommendation: uberRide.scoreTier,
+        expand: true,
+      })
+      .catch(() => {});
+
     if (overlayPref.enableSoundAlerts || drivingMode.soundAlerts) {
       playCopilotSound('good');
     }
@@ -1515,6 +1760,10 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const toggleOverlay = () => {
+    if (isNativeAndroid() && !hasOverlayPermission) {
+      setIsOverlayPermissionModalOpen(true);
+      return;
+    }
     setOverlayPref((prev) => ({ ...prev, isEnabled: !prev.isEnabled }));
   };
 
@@ -1838,9 +2087,15 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isOnboardingOpen,
         setIsOnboardingOpen,
         hasOverlayPermission,
+        hasAccessibilityPermission,
+        hasLocationPermission,
+        isNativeOverlayRunning,
         isOverlayPermissionModalOpen,
         setIsOverlayPermissionModalOpen,
         grantOverlayPermission,
+        grantAccessibilityPermission,
+        requestMobileRuntimePermissions,
+        refreshNativePermissions,
         dismissOverlayPermissionModal,
         isMinimalistMode,
         setIsMinimalistMode,

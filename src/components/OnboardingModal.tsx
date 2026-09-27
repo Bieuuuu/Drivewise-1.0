@@ -45,7 +45,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
     firebaseUser,
     loginWithGoogle,
     hasOverlayPermission,
+    hasAccessibilityPermission,
     grantOverlayPermission,
+    grantAccessibilityPermission,
+    requestMobileRuntimePermissions,
   } = useDriveWise();
 
   const [step, setStep] = useState<number>(1);
@@ -148,6 +151,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
   };
 
   const requestGps = () => {
+    requestMobileRuntimePermissions().catch(() => {});
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         () => setGpsRequested(true),
@@ -624,8 +628,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
                       <Layers className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-white">Sobreposição de Tela (Círculo Flutuante)</div>
-                      <div className="text-[11px] text-slate-400">Bolha arrastável sobreposta aos apps de transporte</div>
+                      <div className="text-xs font-bold text-white">Sobreposição de Tela (HUD Fora do App)</div>
+                      <div className="text-[11px] text-slate-400">Permite o semáforo flutuar sobre a Uber, 99 e InDrive</div>
                     </div>
                   </div>
                   <button
@@ -639,11 +643,35 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
                     }}
                     className={`min-h-[34px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       hasOverlayPermission && overlayPref.isEnabled
-                        ? 'bg-white/[0.1] text-white border border-white/[0.2]'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                         : 'bg-white hover:bg-slate-200 text-slate-950 shadow-sm'
                     }`}
                   >
-                    {hasOverlayPermission && overlayPref.isEnabled ? 'Permitido ✓' : 'Ativar'}
+                    {hasOverlayPermission && overlayPref.isEnabled ? 'Permitido ✓' : 'Permitir no Celular'}
+                  </button>
+                </div>
+
+                {/* Accessibility Ride Reader Permission */}
+                <div className="p-3.5 rounded-2xl bg-[#0B0D12] border border-white/[0.08] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.1] flex items-center justify-center text-white shrink-0">
+                      <Activity className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">Leitor Automático (Acessibilidade)</div>
+                      <div className="text-[11px] text-slate-400">Lê automaticamente valor R$ e KM das chamadas</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => grantAccessibilityPermission()}
+                    className={`min-h-[34px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      hasAccessibilityPermission
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-white/[0.08] hover:bg-white/[0.14] text-white border border-white/[0.15]'
+                    }`}
+                  >
+                    {hasAccessibilityPermission ? 'Ativo ✓' : 'Ativar no Celular'}
                   </button>
                 </div>
 

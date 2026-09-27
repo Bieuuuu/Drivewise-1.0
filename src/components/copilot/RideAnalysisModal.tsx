@@ -22,17 +22,28 @@ import { speakCopilotMessage, playCopilotSound } from '../../utils/copilotCalcul
 import { formatCurrency } from '../../utils/calculations';
 
 interface RideAnalysisModalProps {
-  ride: RideOpportunity | null;
-  isOpen: boolean;
-  onClose: () => void;
+  ride?: RideOpportunity | null;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const RideAnalysisModal: React.FC<RideAnalysisModalProps> = ({
-  ride,
-  isOpen,
-  onClose,
+  ride: rideProp,
+  isOpen: isOpenProp,
+  onClose: onCloseProp,
 }) => {
-  const { acceptRideOpportunity, rejectRideOpportunity, activeVehicleProfile } = useDriveWise();
+  const {
+    lastAnalyzedRide,
+    isRideAnalysisModalOpen,
+    setIsRideAnalysisModalOpen,
+    acceptRideOpportunity,
+    rejectRideOpportunity,
+    activeVehicleProfile,
+  } = useDriveWise();
+
+  const ride = rideProp !== undefined ? rideProp : lastAnalyzedRide;
+  const isOpen = isOpenProp !== undefined ? isOpenProp : isRideAnalysisModalOpen;
+  const onClose = onCloseProp || (() => setIsRideAnalysisModalOpen(false));
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [showRejectOptions, setShowRejectOptions] = useState(false);
 

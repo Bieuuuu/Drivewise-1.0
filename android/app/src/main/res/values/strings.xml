@@ -4,4 +4,5 @@
     <string name="title_activity_main">DriveWise</string>
     <string name="package_name">com.drivewise.copiloto</string>
     <string name="custom_url_scheme">com.drivewise.copiloto</string>
+    <string name="accessibility_service_description">O DriveWise Copiloto lê apenas o valor em Reais, a distância (km) e o tempo das ofertas de corrida da Uber, 99 e InDrive na tela para calcular seu lucro líquido por km em tempo real. Nenhuma senha ou dado pessoal é coletado.</string>
 </resources>

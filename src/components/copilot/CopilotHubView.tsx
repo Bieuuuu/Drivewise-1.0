@@ -20,6 +20,9 @@ export const CopilotHubView: React.FC = () => {
     setIsRideAnalysisModalOpen,
     setIsSimulatorOpen,
     setIsOnboardingOpen,
+    setIsOverlayPermissionModalOpen,
+    hasOverlayPermission,
+    hasAccessibilityPermission,
     overlayPref,
     toggleOverlay,
     toggleDrivingMode,
@@ -78,21 +81,23 @@ export const CopilotHubView: React.FC = () => {
           <button
             onClick={toggleOverlay}
             className={`p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between transition-colors ${
-              overlayPref.isEnabled
+              overlayPref.isEnabled && hasOverlayPermission
                 ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                 : 'bg-white/[0.03] border-white/[0.06] text-slate-300 hover:bg-white/[0.06]'
             }`}
           >
             <span className="flex items-center gap-1.5 truncate">
               <Layers className="w-3.5 h-3.5 text-slate-400" />
-              <span>Overlay flutuante</span>
+              <span>HUD Fora do App</span>
             </span>
             <span
               className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                overlayPref.isEnabled ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-white/[0.08] text-slate-400'
+                overlayPref.isEnabled && hasOverlayPermission
+                  ? 'bg-emerald-500 text-slate-950 font-bold'
+                  : 'bg-white/[0.08] text-slate-400'
               }`}
             >
-              {overlayPref.isEnabled ? 'ATIVO' : 'DESL.'}
+              {overlayPref.isEnabled && hasOverlayPermission ? 'ATIVO' : 'ATIVAR'}
             </span>
           </button>
 
@@ -105,6 +110,34 @@ export const CopilotHubView: React.FC = () => {
               <span>Modo direção</span>
             </span>
             <span className="text-[10px] text-amber-400 font-medium">ABRIR</span>
+          </button>
+        </div>
+
+        {/* Android System Permissions Quick Bar */}
+        <div className="mt-2.5 pt-2.5 border-t border-white/[0.05] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                hasOverlayPermission && hasAccessibilityPermission
+                  ? 'bg-emerald-400'
+                  : hasOverlayPermission
+                  ? 'bg-amber-400'
+                  : 'bg-rose-400'
+              }`}
+            />
+            <span>
+              {hasOverlayPermission && hasAccessibilityPermission
+                ? 'Sobreposição e Leitor Automático ativos no celular'
+                : hasOverlayPermission
+                ? 'Sobreposição ativa • Falta ativar Leitor de Acessibilidade'
+                : 'Ative as permissões do celular para funcionar sobre Uber e 99'}
+            </span>
+          </div>
+          <button
+            onClick={() => setIsOverlayPermissionModalOpen(true)}
+            className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-[11px] font-bold shrink-0 cursor-pointer"
+          >
+            Permissões
           </button>
         </div>
       </div>

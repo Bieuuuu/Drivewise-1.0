@@ -404,7 +404,12 @@ export const JourneyView: React.FC = () => {
               Resumo Consolidado do Dia
             </h2>
           </div>
-          <span className="text-xs text-slate-400">03 de setembro</span>
+          <span className="text-xs text-slate-400">
+            {new Date(`${currentDateStr}T12:00:00`).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: 'long',
+            })}
+          </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center">

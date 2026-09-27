@@ -29,24 +29,30 @@ export const DrivingSafeMode: React.FC = () => {
     rejectRideOpportunity,
     activeSession,
     elapsedSeconds,
+    currentSpeedKmH,
+    isSimulatingMovement,
     user,
     sessions,
     currentDateStr,
   } = useDriveWise();
 
-  const [simulatedSpeed, setSimulatedSpeed] = useState(42);
+  const [simulatedSpeed, setSimulatedSpeed] = useState(0);
 
-  // Speedometer fluctuation for realism in demo
+  // Use real GPS speed unless movement simulation is explicitly toggled
   useEffect(() => {
     if (!drivingMode.isActive) return;
+    if (!isSimulatingMovement) {
+      setSimulatedSpeed(currentSpeedKmH);
+      return;
+    }
     const interval = setInterval(() => {
       setSimulatedSpeed((prev) => {
         const delta = Math.floor(Math.random() * 9) - 4;
-        return Math.max(25, Math.min(68, prev + delta));
+        return Math.max(25, Math.min(68, (prev || 35) + delta));
       });
     }, 2500);
     return () => clearInterval(interval);
-  }, [drivingMode.isActive]);
+  }, [drivingMode.isActive, isSimulatingMovement, currentSpeedKmH]);
 
   if (!drivingMode.isActive) return null;
 

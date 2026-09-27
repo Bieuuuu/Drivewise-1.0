@@ -1,112 +1,88 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Security helpers
-    function isSignedIn() {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
       return request.auth != null;
     }
 
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isValidUserProfile(data) {
+      return (!('name' in data) || (data.name is string && data.name.size() <= 120)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 160)) &&
+             (!('dailyGoal' in data) || (data.dailyGoal is number && data.dailyGoal >= 0 && data.dailyGoal <= 1000000)) &&
+             (!('weeklyGoal' in data) || (data.weeklyGoal is number && data.weeklyGoal >= 0 && data.weeklyGoal <= 1000000)) &&
+             (!('monthlyGoal' in data) || (data.monthlyGoal is number && data.monthlyGoal >= 0 && data.monthlyGoal <= 10000000));
     }
 
-    // Connection health check route
-    match /test/{docId} {
-      allow read: if true;
-      allow write: if false;
+    function isValidSession(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() < 120 &&
+             data.date is string && data.date.size() <= 30 &&
+             data.durationMinutes is number && data.durationMinutes >= 0 && data.durationMinutes <= 100000 &&
+             data.distanceKm is number && data.distanceKm >= 0 && data.distanceKm <= 100000 &&
+             data.income is number && data.income >= 0 && data.income <= 1000000;
     }
 
-    // Driver user profile
+    function isValidExpense(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() < 120 &&
+             data.date is string && data.date.size() <= 30 &&
+             data.category is string && data.category.size() <= 80 &&
+             data.amount is number && data.amount >= 0 && data.amount <= 1000000;
+    }
+
+    function isValidFuelEntry(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() < 120 &&
+             data.date is string && data.date.size() <= 30 &&
+             data.liters is number && data.liters >= 0 && data.liters <= 10000 &&
+             data.totalCost is number && data.totalCost >= 0 && data.totalCost <= 1000000;
+    }
+
+    function isValidRide(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() < 120 &&
+             data.platform is string && data.platform.size() <= 60 &&
+             (
+               ('offeredValue' in data && data.offeredValue is number && data.offeredValue >= 0) ||
+               ('grossValue' in data && data.grossValue is number && data.grossValue >= 0)
+             );
+    }
+
+    // ===============================================================
+    // User Rules & Subcollections
+    // ===============================================================
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false;
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow delete: if isOwner(userId);
 
-      allow create: if isOwner(userId) && isValidId(userId)
-        && request.resource.data.name is string && request.resource.data.name.size() <= 100
-        && request.resource.data.email is string && request.resource.data.email.size() <= 150;
-
-      allow update: if isOwner(userId) && isValidId(userId)
-        && request.resource.data.name is string && request.resource.data.name.size() <= 100
-        && request.resource.data.email is string && request.resource.data.email.size() <= 150;
-
-      allow delete: if isOwner(userId) && isValidId(userId);
-
-      // Subcollection: Sessions
       match /sessions/{sessionId} {
-        allow get, list: if isOwner(userId);
-        
-        allow create: if isOwner(userId) && isValidId(sessionId)
-          && request.resource.data.userId == userId
-          && request.resource.data.date is string && request.resource.data.date.size() <= 30
-          && request.resource.data.income is number
-          && request.resource.data.distanceKm is number;
-
-        allow update: if isOwner(userId) && isValidId(sessionId)
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.income is number
-          && request.resource.data.distanceKm is number;
-
-        allow delete: if isOwner(userId) && isValidId(sessionId);
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidSession(request.resource.data);
+        allow delete: if isOwner(userId);
       }
 
-      // Subcollection: Expenses
       match /expenses/{expenseId} {
-        allow get, list: if isOwner(userId);
-
-        allow create: if isOwner(userId) && isValidId(expenseId)
-          && request.resource.data.userId == userId
-          && request.resource.data.category is string && request.resource.data.category.size() <= 60
-          && request.resource.data.amount is number;
-
-        allow update: if isOwner(userId) && isValidId(expenseId)
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.amount is number;
-
-        allow delete: if isOwner(userId) && isValidId(expenseId);
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidExpense(request.resource.data);
+        allow delete: if isOwner(userId);
       }
 
-      // Subcollection: Fuel Entries
-      match /fuelEntries/{fuelId} {
-        allow get, list: if isOwner(userId);
-
-        allow create: if isOwner(userId) && isValidId(fuelId)
-          && request.resource.data.userId == userId
-          && request.resource.data.liters is number
-          && request.resource.data.totalCost is number
-          && request.resource.data.fuelType is string && request.resource.data.fuelType.size() <= 40;
-
-        allow update: if isOwner(userId) && isValidId(fuelId)
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.liters is number
-          && request.resource.data.totalCost is number;
-
-        allow delete: if isOwner(userId) && isValidId(fuelId);
+      match /fuelEntries/{entryId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidFuelEntry(request.resource.data);
+        allow delete: if isOwner(userId);
       }
 
-      // Subcollection: Copilot Rides
       match /rides/{rideId} {
-        allow get, list: if isOwner(userId);
-
-        allow create: if isOwner(userId) && isValidId(rideId)
-          && request.resource.data.userId == userId
-          && request.resource.data.platform is string && request.resource.data.platform.size() <= 40
-          && request.resource.data.grossValue is number
-          && request.resource.data.totalKm is number;
-
-        allow update: if isOwner(userId) && isValidId(rideId)
-          && request.resource.data.userId == resource.data.userId;
-
-        allow delete: if isOwner(userId) && isValidId(rideId);
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidRide(request.resource.data);
+        allow delete: if isOwner(userId);
       }
     }
   }
