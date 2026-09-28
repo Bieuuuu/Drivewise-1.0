@@ -182,10 +182,14 @@ export const ProductLandingPage: React.FC<ProductLandingPageProps> = ({
       localStorage.setItem('drivewise_app_downloaded', 'true');
     } catch {}
 
-    const targetUrl =
+    const baseUrl =
       apkDownloadUrl && apkDownloadUrl !== '/drivewise.apk'
         ? apkDownloadUrl
         : OFFICIAL_GITHUB_RELEASE_APK_URL;
+
+    const targetUrl = baseUrl.includes('github.com/')
+      ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}v=2.6.0&t=${Date.now()}`
+      : baseUrl;
 
     if (typeof window !== 'undefined') {
       try {
