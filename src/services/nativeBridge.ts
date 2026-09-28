@@ -36,6 +36,7 @@ export interface NativeBridgePlugin {
   requestRuntimePermissions: () => Promise<{ success: boolean }>;
   checkAllPermissions: () => Promise<NativePermissionsStatus>;
   startFloatingOverlay: () => Promise<{ success: boolean }>;
+  launchFloatingPipWindowNow: () => Promise<{ success: boolean }>;
   stopFloatingOverlay: () => Promise<{ success: boolean }>;
   syncOverlayConfig: (costPerKm: number, minNetPerKm: number) => Promise<{ success: boolean }>;
   updateOverlayData: (payload: NativeOverlayRidePayload) => Promise<{ success: boolean }>;
@@ -50,6 +51,7 @@ declare global {
       requestAccessibilityPermission: () => void;
       requestRuntimePermissions: () => void;
       startFloatingOverlay: () => boolean;
+      launchFloatingPipWindowNow?: () => boolean;
       stopFloatingOverlay: () => void;
       isOverlayRunning: () => boolean;
       syncOverlayConfig: (costPerKm: number, minNetPerKm: number) => void;
@@ -224,6 +226,29 @@ export const nativeBridge: NativeBridgePlugin = {
         return await window.Capacitor.Plugins.DriveWiseNative.startFloatingOverlay();
       } catch (e) {
         console.warn('[NativeBridge] startFloatingOverlay Capacitor error:', e);
+        return { success: false };
+      }
+    }
+    return { success: true };
+  },
+
+  async launchFloatingPipWindowNow() {
+    if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.launchFloatingPipWindowNow) {
+      try {
+        const success = Boolean(window.DriveWiseNativeBridge.launchFloatingPipWindowNow());
+        return { success };
+      } catch (e) {
+        console.warn('[NativeBridge] launchFloatingPipWindowNow JSBridge error:', e);
+        return { success: false };
+      }
+    }
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.DriveWiseNative) {
+      try {
+        return await window.Capacitor.Plugins.DriveWiseNative.startFloatingOverlay({
+          enterPipNow: true,
+        });
+      } catch (e) {
+        console.warn('[NativeBridge] launchFloatingPipWindowNow Capacitor error:', e);
         return { success: false };
       }
     }

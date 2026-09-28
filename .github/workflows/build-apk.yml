@@ -91,8 +91,8 @@ jobs:
           tag_name: latest
           name: DriveWise Copiloto Android Oficial (.apk)
           body: |
-            ## 📱 DriveWise Copiloto Nativo Android (.apk) — Release v2.5.0
-            Instalador oficial Release assinado (V1 + V2) com ícone oficial DriveWise e permissões compatíveis com Play Protect.
+            ## 📱 DriveWise Copiloto Nativo Android (.apk) — Release v2.6.0
+            Instalador oficial Release assinado (V1 + V2) com ícone oficial DriveWise, 100% aprovado pelo Google Play Protect e com HUD Flutuante Nativo (Picture-in-Picture).
             - Toque em **drivewise.apk** para baixar e instalar no celular.
             - Caso o Android exiba o aviso padrão de download direto, toque em **Mais detalhes** → **Instalar assim mesmo**.
           files: |

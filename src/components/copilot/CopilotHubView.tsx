@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useDriveWise } from '../../context/DriveWiseContext';
 import { formatCurrency } from '../../utils/calculations';
+import { nativeBridge, isNativeAndroid } from '../../services/nativeBridge';
 import { CopilotAnalyticsView } from './CopilotAnalyticsView';
 import { CopilotSettingsView } from './CopilotSettingsView';
 
@@ -133,12 +134,22 @@ export const CopilotHubView: React.FC = () => {
                 : 'Ative as permissões do celular para funcionar sobre Uber e 99'}
             </span>
           </div>
-          <button
-            onClick={() => setIsOverlayPermissionModalOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-[11px] font-bold shrink-0 cursor-pointer"
-          >
-            Permissões
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isNativeAndroid() && (
+              <button
+                onClick={() => nativeBridge.launchFloatingPipWindowNow()}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold cursor-pointer"
+              >
+                Flutuar Agora
+              </button>
+            )}
+            <button
+              onClick={() => setIsOverlayPermissionModalOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-[11px] font-bold cursor-pointer"
+            >
+              Permissões
+            </button>
+          </div>
         </div>
       </div>
 
