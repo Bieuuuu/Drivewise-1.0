@@ -72,7 +72,7 @@ public class DriveWiseNativePlugin extends Plugin {
 
     @PluginMethod
     public void startFloatingOverlay(PluginCall call) {
-        boolean expandNow = call.getBoolean("enterPipNow", false);
+        boolean expandNow = call.getBoolean("enterExpandedNow", false);
         boolean started = false;
         if (getActivity() instanceof MainActivity) {
             MainActivity act = (MainActivity) getActivity();

@@ -57,6 +57,19 @@ public class FloatingOverlayService extends Service {
     public static final String ACTION_UPDATE_CONFIG = "com.drivewise.copiloto.ACTION_UPDATE_OVERLAY_CONFIG";
     public static final String ACTION_OVERLAY_RIDE_EVENT = "com.drivewise.copiloto.ACTION_OVERLAY_RIDE_EVENT";
 
+    /** Last real reading pushed by the OCR ScreenCaptureService (zero-toque). */
+    public static volatile String lastAutoReadingJson = "";
+    public static volatile long lastAutoReadingAt = 0L;
+
+    // Ride lifecycle state machine: a stable OCR reading ("received") is remembered so the
+    // later accepted/completed/rejected event carries the SAME numbers + auto-read source.
+    private static double pendingOfferGross = 0.0;
+    private static double pendingOfferKm = 0.0;
+    private static int pendingOfferMin = 0;
+    private static String pendingOfferPlatform = "Uber";
+    private static boolean pendingOfferFromAuto = false;
+    private static long pendingOfferAt = 0L;
+
     public static volatile boolean isRunning = false;
 
     private WindowManager windowManager;
@@ -109,6 +122,11 @@ public class FloatingOverlayService extends Service {
     private int currentDurationMin = 12;
     private boolean isRideInRoute = false;
 
+    // Zero-toque: true when the current numbers came from the OCR screen reader instead
+    // of the manual keypad. Shown as a badge in the HUD so the driver trusts the data.
+    private boolean isAutoReadFilled = false;
+    private String autoReadBadgeText = "";
+
     // Computed real-time metrics
     private double computedCost = 0.0;
     private double computedNetProfit = 0.0;
@@ -128,6 +146,18 @@ public class FloatingOverlayService extends Service {
         double distanceKm,
         int durationMin
     ) {
+        appendPendingRideEvent(ctx, actionType, platform, grossValue, distanceKm, durationMin, false);
+    }
+
+    public static void appendPendingRideEvent(
+        Context ctx,
+        String actionType,
+        String platform,
+        double grossValue,
+        double distanceKm,
+        int durationMin,
+        boolean fromAutoRead
+    ) {
         try {
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             String existingJson = prefs.getString("pending_ride_events", "[]");
@@ -135,12 +165,38 @@ public class FloatingOverlayService extends Service {
 
             JSONObject ev = new JSONObject();
             ev.put("id", "ov-" + System.currentTimeMillis());
-            ev.put("action", actionType); // "accepted" | "completed" | "rejected"
+            ev.put("action", actionType); // "received" | "accepted" | "completed" | "rejected"
             ev.put("platform", platform);
             ev.put("grossValue", grossValue);
             ev.put("totalDistanceKm", distanceKm);
             ev.put("durationMinutes", durationMin);
+            ev.put("source", fromAutoRead ? "ocr-auto-read" : "manual-overlay");
             ev.put("timestamp", System.currentTimeMillis());
+
+            // Ride lifecycle state machine: remember the pending offer so a later
+            // accepted/completed/rejected event reuses the SAME numbers and provenance.
+            if ("received".equals(actionType)) {
+                pendingOfferGross = grossValue;
+                pendingOfferKm = distanceKm;
+                pendingOfferMin = durationMin;
+                pendingOfferPlatform = platform;
+                pendingOfferFromAuto = fromAutoRead;
+                pendingOfferAt = System.currentTimeMillis();
+            } else if ("accepted".equals(actionType)) {
+                // Keep the pending offer alive (it is the ride in route).
+            } else if ("completed".equals(actionType) || "rejected".equals(actionType)) {
+                boolean sameRide =
+                    Math.abs(pendingOfferGross - grossValue) < 0.01 &&
+                    (System.currentTimeMillis() - pendingOfferAt) < 3_600_000L;
+                if (sameRide && pendingOfferFromAuto) {
+                    ev.put("source", "ocr-auto-read");
+                    fromAutoRead = true;
+                }
+                if ("completed".equals(actionType) || "rejected".equals(actionType)) {
+                    pendingOfferGross = 0.0;
+                    pendingOfferAt = 0L;
+                }
+            }
 
             arr.put(ev);
             prefs.edit().putString("pending_ride_events", arr.toString()).apply();
@@ -204,6 +260,14 @@ public class FloatingOverlayService extends Service {
                     currentDistanceKm = Math.max(0.5, dist);
                     currentDurationMin = Math.max(1, dur);
                     rawInputBuffer = "";
+                    isAutoReadFilled = true;
+                    autoReadBadgeText = "📷 Lido da tela automaticamente";
+                    lastAutoReadingJson = String.format(
+                        Locale.ROOT,
+                        "{\"grossValue\":%.2f,\"totalKm\":%.2f,\"durationMin\":%d,\"platform\":\"%s\"}",
+                        gross, dist, dur, selectedPlatform
+                    );
+                    lastAutoReadingAt = System.currentTimeMillis();
                     recalculateMetrics();
                     if (expand) {
                         setExpandedState(true);
@@ -797,12 +861,17 @@ public class FloatingOverlayService extends Service {
         box.setOnClickListener(v -> {
             activeInputField = fieldIndex;
             rawInputBuffer = "";
+            isAutoReadFilled = false;
+            autoReadBadgeText = "";
             refreshOverlayUI();
         });
         return box;
     }
 
     private void handleKeypadPress(String key) {
+        // Driver started typing manually → the numbers are no longer an OCR reading.
+        isAutoReadFilled = false;
+        autoReadBadgeText = "";
         if ("C".equals(key)) {
             rawInputBuffer = "";
             if (activeInputField == 0) currentGross = 0.0;
@@ -859,6 +928,8 @@ public class FloatingOverlayService extends Service {
         rawInputBuffer = "";
         activeInputField = 0;
         isRideInRoute = false;
+        isAutoReadFilled = false;
+        autoReadBadgeText = "";
         recalculateMetrics();
         refreshOverlayUI();
     }
@@ -1081,7 +1152,9 @@ public class FloatingOverlayService extends Service {
             pillSubText.setTextColor(accentColor);
 
             verdictContainer.setBackground(roundedBox(bgColor, accentColor, 2, 12));
-            verdictTitleText.setText(trafficLabel);
+            verdictTitleText.setText(
+                (isAutoReadFilled ? autoReadBadgeText + "\n" : "") + trafficLabel
+            );
             verdictNetProfitText.setText(
                 String.format(
                     Locale.forLanguageTag("pt-BR"),

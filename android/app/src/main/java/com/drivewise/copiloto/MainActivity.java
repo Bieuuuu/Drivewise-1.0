@@ -10,6 +10,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -50,6 +51,9 @@ public class MainActivity extends BridgeActivity {
 
     public static final int REQ_RUNTIME_PERMISSIONS = 4201;
     public static final int REQ_OVERLAY_PERMISSION = 4202;
+    public static final int REQ_SCREEN_CAPTURE_PERMISSION = 4203;
+
+    private MediaProjectionManager screenCaptureManager;
 
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
@@ -281,6 +285,34 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * Zero-toque OCR: asks the user for one-time screen-capture consent (standard Android
+     * MediaProjection dialog — NOT blocked by Play Protect) and then starts
+     * ScreenCaptureService, which reads Uber/99/InDrive offer cards automatically.
+     */
+    public boolean requestAndStartScreenCapture() {
+        try {
+            if (screenCaptureManager == null) {
+                screenCaptureManager = (MediaProjectionManager)
+                    getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            }
+            if (screenCaptureManager == null) return false;
+            Intent captureIntent = screenCaptureManager.createScreenCaptureIntent();
+            startActivityForResult(captureIntent, REQ_SCREEN_CAPTURE_PERMISSION);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public void stopScreenCaptureService() {
+        try {
+            Intent stopIntent = new Intent(this, ScreenCaptureService.class);
+            stopIntent.setAction(ScreenCaptureService.ACTION_STOP);
+            startService(stopIntent);
+        } catch (Exception ignored) {}
+    }
+
     public void saveHudConfig(double costPerKm, double minNetPerKm) {
         try {
             SharedPreferences.Editor ed = getSharedPreferences(
@@ -430,6 +462,45 @@ public class MainActivity extends BridgeActivity {
                 startRealFloatingOverlayService(false);
             }
             notifyWebViewPermissionsUpdated();
+        } else if (requestCode == REQ_SCREEN_CAPTURE_PERMISSION) {
+            // Zero-toque: user granted screen-capture consent for this turn → start OCR reader.
+            boolean started = false;
+            if (resultCode == RESULT_OK && data != null) {
+                try {
+                    Intent captureIntent = new Intent(this, ScreenCaptureService.class);
+                    captureIntent.setAction(ScreenCaptureService.ACTION_START_WITH_RESULT);
+                    captureIntent.putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode);
+                    captureIntent.putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(captureIntent);
+                    } else {
+                        startService(captureIntent);
+                    }
+                    started = true;
+                } catch (Exception ignored) {}
+            }
+            dispatchScreenCaptureResultToWebView(started);
+        }
+    }
+
+    private void dispatchScreenCaptureResultToWebView(boolean started) {
+        if (this.bridge == null || this.bridge.getWebView() == null) return;
+        final String js =
+            "window.dispatchEvent(new CustomEvent('drivewise:screen-capture-status', { detail: " +
+            "{\"capturing\":" + (started ? "true" : "false") +
+            ",\"reading\":" + quoteJson(FloatingOverlayService.lastAutoReadingJson) + "} }));";
+        this.bridge.getWebView().post(() ->
+            this.bridge.getWebView().evaluateJavascript(js, null)
+        );
+    }
+
+    private static String quoteJson(String maybeJson) {
+        if (maybeJson == null || maybeJson.isEmpty()) return "null";
+        try {
+            new JSONObject(maybeJson);
+            return maybeJson; // already valid JSON object
+        } catch (Exception e) {
+            return "null";
         }
     }
 
@@ -505,7 +576,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public boolean launchFloatingPipWindowNow() {
+        public boolean expandFloatingOverlayNow() {
             if (!canDrawSystemOverlay()) {
                 runOnUiThread(MainActivity.this::requestSystemOverlayPermission);
                 return false;
@@ -527,6 +598,37 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void syncOverlayConfig(double costPerKm, double minNetPerKm) {
             saveHudConfig(costPerKm, minNetPerKm);
+        }
+
+        @JavascriptInterface
+        public boolean startScreenCaptureAutoRead() {
+            final MainActivity act = MainActivity.this;
+            // Overlay HUD must be running so the OCR reading has somewhere to land.
+            runOnUiThread(() -> {
+                if (act.canDrawSystemOverlay()) act.startRealFloatingOverlayService(false);
+                act.requestAndStartScreenCapture();
+            });
+            return true;
+        }
+
+        @JavascriptInterface
+        public void stopScreenCaptureAutoRead() {
+            runOnUiThread(MainActivity.this::stopScreenCaptureService);
+        }
+
+        @JavascriptInterface
+        public String getScreenCaptureStatusJson() {
+            try {
+                JSONObject ret = new JSONObject();
+                ret.put("capturing", ScreenCaptureService.isCapturing);
+                String reading = FloatingOverlayService.lastAutoReadingJson;
+                ret.put("readingAt", FloatingOverlayService.lastAutoReadingAt);
+                ret.put("reading", (reading != null && !reading.isEmpty())
+                    ? new JSONObject(reading) : JSONObject.NULL);
+                return ret.toString();
+            } catch (Exception e) {
+                return "{\"capturing\":false,\"reading\":null}";
+            }
         }
 
         @JavascriptInterface

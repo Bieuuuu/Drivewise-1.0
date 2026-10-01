@@ -36,10 +36,25 @@ export interface NativeBridgePlugin {
   requestRuntimePermissions: () => Promise<{ success: boolean }>;
   checkAllPermissions: () => Promise<NativePermissionsStatus>;
   startFloatingOverlay: () => Promise<{ success: boolean }>;
-  launchFloatingPipWindowNow: () => Promise<{ success: boolean }>;
+  expandFloatingOverlayNow: () => Promise<{ success: boolean }>;
   stopFloatingOverlay: () => Promise<{ success: boolean }>;
   syncOverlayConfig: (costPerKm: number, minNetPerKm: number) => Promise<{ success: boolean }>;
   updateOverlayData: (payload: NativeOverlayRidePayload) => Promise<{ success: boolean }>;
+  startScreenCaptureAutoRead: () => Promise<{ success: boolean }>;
+  stopScreenCaptureAutoRead: () => Promise<{ success: boolean }>;
+  getScreenCaptureStatusJson: () => Promise<string>;
+}
+
+export interface ScreenCaptureStatus {
+  capturing: boolean;
+  readingAt?: number;
+  reading?: {
+    grossValue?: number;
+    totalKm?: number;
+    durationMin?: number;
+    platform?: string;
+    confidence?: number;
+  } | null;
 }
 
 declare global {
@@ -51,12 +66,15 @@ declare global {
       requestAccessibilityPermission: () => void;
       requestRuntimePermissions: () => void;
       startFloatingOverlay: () => boolean;
-      launchFloatingPipWindowNow?: () => boolean;
+      expandFloatingOverlayNow?: () => boolean;
       stopFloatingOverlay: () => void;
       isOverlayRunning: () => boolean;
       syncOverlayConfig: (costPerKm: number, minNetPerKm: number) => void;
       updateOverlayDataJson: (jsonString: string) => boolean;
       checkAllPermissionsJson: () => string;
+      startScreenCaptureAutoRead?: () => boolean;
+      stopScreenCaptureAutoRead?: () => void;
+      getScreenCaptureStatusJson?: () => string;
     };
     Capacitor?: {
       isNativePlatform?: () => boolean;
@@ -232,27 +250,97 @@ export const nativeBridge: NativeBridgePlugin = {
     return { success: true };
   },
 
-  async launchFloatingPipWindowNow() {
-    if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.launchFloatingPipWindowNow) {
+  async expandFloatingOverlayNow() {
+    if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.expandFloatingOverlayNow) {
       try {
-        const success = Boolean(window.DriveWiseNativeBridge.launchFloatingPipWindowNow());
+        const success = Boolean(window.DriveWiseNativeBridge.expandFloatingOverlayNow());
         return { success };
       } catch (e) {
-        console.warn('[NativeBridge] launchFloatingPipWindowNow JSBridge error:', e);
+        console.warn('[NativeBridge] expandFloatingOverlayNow JSBridge error:', e);
         return { success: false };
       }
     }
     if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.DriveWiseNative) {
       try {
         return await window.Capacitor.Plugins.DriveWiseNative.startFloatingOverlay({
-          enterPipNow: true,
+          enterExpandedNow: true,
         });
       } catch (e) {
-        console.warn('[NativeBridge] launchFloatingPipWindowNow Capacitor error:', e);
+        console.warn('[NativeBridge] expandFloatingOverlayNow Capacitor error:', e);
         return { success: false };
       }
     }
     return { success: true };
+  },
+
+  /**
+   * Zero-Touch Auto-Read: starts the MediaProjection screen-capture service that
+   * runs on-device ML Kit OCR and feeds stable ride offers straight into the HUD.
+   * The first call triggers the one-time Android system consent dialog.
+   */
+  async startScreenCaptureAutoRead() {
+    if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.startScreenCaptureAutoRead) {
+      try {
+        const success = Boolean(window.DriveWiseNativeBridge.startScreenCaptureAutoRead());
+        return { success };
+      } catch (e) {
+        console.warn('[NativeBridge] startScreenCaptureAutoRead JSBridge error:', e);
+        return { success: false };
+      }
+    }
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.DriveWiseNative) {
+      try {
+        return await window.Capacitor.Plugins.DriveWiseNative.startScreenCaptureAutoRead();
+      } catch (e) {
+        console.warn('[NativeBridge] startScreenCaptureAutoRead Capacitor error:', e);
+        return { success: false };
+      }
+    }
+    return { success: false };
+  },
+
+  async stopScreenCaptureAutoRead() {
+    if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.stopScreenCaptureAutoRead) {
+      try {
+        window.DriveWiseNativeBridge.stopScreenCaptureAutoRead();
+        return { success: true };
+      } catch (e) {
+        console.warn('[NativeBridge] stopScreenCaptureAutoRead JSBridge error:', e);
+        return { success: false };
+      }
+    }
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.DriveWiseNative) {
+      try {
+        return await window.Capacitor.Plugins.DriveWiseNative.stopScreenCaptureAutoRead();
+      } catch (e) {
+        console.warn('[NativeBridge] stopScreenCaptureAutoRead Capacitor error:', e);
+        return { success: false };
+      }
+    }
+    return { success: true };
+  },
+
+  async getScreenCaptureStatus(): Promise<ScreenCaptureStatus> {
+    let raw = '';
+    if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.getScreenCaptureStatusJson) {
+      try {
+        raw = window.DriveWiseNativeBridge.getScreenCaptureStatusJson();
+      } catch (e) {
+        console.warn('[NativeBridge] getScreenCaptureStatus JSBridge error:', e);
+      }
+    } else if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.DriveWiseNative) {
+      try {
+        const res = await window.Capacitor.Plugins.DriveWiseNative.getScreenCaptureStatus();
+        raw = res?.statusJson || '';
+      } catch (e) {
+        console.warn('[NativeBridge] getScreenCaptureStatus Capacitor error:', e);
+      }
+    }
+    try {
+      return raw ? (JSON.parse(raw) as ScreenCaptureStatus) : { capturing: false, reading: null };
+    } catch {
+      return { capturing: false, reading: null };
+    }
   },
 
   async stopFloatingOverlay() {

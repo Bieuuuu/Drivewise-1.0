@@ -124,7 +124,7 @@ export const OverlayPermissionModal: React.FC<OverlayPermissionModalProps> = () 
                 onClick={async () => {
                   await grantOverlayPermission();
                   if (isNative && hasOverlayPermission) {
-                    await nativeBridge.launchFloatingPipWindowNow();
+                    await nativeBridge.expandFloatingOverlayNow();
                   }
                 }}
                 className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Zap,
   Sliders,
@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Calculator,
   Sparkles,
+  ScanEye,
 } from 'lucide-react';
 import { useDriveWise } from '../../context/DriveWiseContext';
 import { formatCurrency } from '../../utils/calculations';
@@ -29,6 +30,45 @@ export const CopilotHubView: React.FC = () => {
   } = useDriveWise();
 
   const [activeSection, setActiveSection] = useState<'analytics' | 'settings'>('analytics');
+
+  // Zero-Touch Auto-Read state (MediaProjection + on-device OCR)
+  const [isAutoReading, setIsAutoReading] = useState(false);
+  const [lastAutoReading, setLastAutoReading] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    let mounted = true;
+    nativeBridge.getScreenCaptureStatus().then((s) => {
+      if (mounted && s.capturing) setIsAutoReading(true);
+    });
+    const handleStatus = (e: Event) => {
+      const detail = (e as CustomEvent<{ capturing?: boolean; reading?: any }>).detail;
+      if (!detail) return;
+      setIsAutoReading(Boolean(detail.capturing));
+      if (detail.reading?.grossValue) {
+        const r = detail.reading;
+        setLastAutoReading(
+          `R$ ${Number(r.grossValue).toFixed(2)} • ${Number(r.totalKm || 0).toFixed(1)} km`
+        );
+      }
+    };
+    window.addEventListener('drivewise:screen-capture-status', handleStatus);
+    return () => {
+      mounted = false;
+      window.removeEventListener('drivewise:screen-capture-status', handleStatus);
+    };
+  }, []);
+
+  const toggleAutoRead = async () => {
+    if (isAutoReading) {
+      await nativeBridge.stopScreenCaptureAutoRead();
+      setIsAutoReading(false);
+    } else {
+      await nativeBridge.startScreenCaptureAutoRead();
+      // actual start is confirmed via the 'drivewise:screen-capture-status' event
+      // after the user answers the Android system consent dialog
+    }
+  };
 
   const renderPlatformDot = (platform: string) => {
     if (platform === 'Uber') return <span className="w-2 h-2 rounded-full bg-white shrink-0" />;
@@ -130,7 +170,7 @@ export const CopilotHubView: React.FC = () => {
           <div className="flex items-center gap-1.5 shrink-0">
             {isNativeAndroid() && hasOverlayPermission && (
               <button
-                onClick={() => nativeBridge.launchFloatingPipWindowNow()}
+                onClick={() => nativeBridge.expandFloatingOverlayNow()}
                 className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold cursor-pointer"
               >
                 Abrir HUD
