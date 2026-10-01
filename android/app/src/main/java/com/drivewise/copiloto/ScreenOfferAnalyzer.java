@@ -49,7 +49,7 @@ public final class ScreenOfferAnalyzer {
 
     // Strong Uber-offer signals present on the com.ubercab.driver offer card
     private static final String[] UBER_SIGNALS = {
-        "procurando passageiro", "searching for riders", "accept trip", "trip request",
+        "uber", "procurando passageiro", "searching for riders", "accept trip", "trip request",
         "detour", "surge", "uberx", "uber black", "comfort", "voyage", "course"
     };
     private static final String[] NINETY_NINE_SIGNALS = {

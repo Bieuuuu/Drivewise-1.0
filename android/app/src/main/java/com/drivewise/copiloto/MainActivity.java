@@ -576,7 +576,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public boolean launchFloatingPipWindowNow() {
+        public boolean expandFloatingOverlayNow() {
             if (!canDrawSystemOverlay()) {
                 runOnUiThread(MainActivity.this::requestSystemOverlayPermission);
                 return false;
