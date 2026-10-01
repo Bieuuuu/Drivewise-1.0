@@ -1547,6 +1547,28 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     creditRideEarningsToToday,
   ]);
 
+  // Listen for background GPS distance accumulated by FloatingOverlayService while driver is on Uber/99
+  useEffect(() => {
+    const handleNativeGpsDelta = (event: Event) => {
+      const customEvent = event as CustomEvent<{ deltaKm?: number }>;
+      const deltaKm = Number(customEvent.detail?.deltaKm || 0);
+      if (!deltaKm || deltaKm <= 0) return;
+
+      setActiveSession((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          totalKm: Number((prev.totalKm + deltaKm).toFixed(2)),
+        };
+      });
+    };
+
+    window.addEventListener('drivewise:native-gps-delta', handleNativeGpsDelta);
+    return () => {
+      window.removeEventListener('drivewise:native-gps-delta', handleNativeGpsDelta);
+    };
+  }, []);
+
   // Automatic debounced Cloud Sync when authenticated
   useEffect(() => {
     if (!firebaseUser || isAuthLoading) return;

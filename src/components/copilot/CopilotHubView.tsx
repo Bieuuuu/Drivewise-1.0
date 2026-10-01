@@ -23,6 +23,8 @@ export const CopilotHubView: React.FC = () => {
     setIsOnboardingOpen,
     setIsOverlayPermissionModalOpen,
     hasOverlayPermission,
+    hasAccessibilityPermission,
+    grantAccessibilityPermission,
     overlayPref,
     toggleOverlay,
     toggleDrivingMode,
@@ -128,6 +130,18 @@ export const CopilotHubView: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {isNativeAndroid() && hasOverlayPermission && (
+              <button
+                onClick={grantAccessibilityPermission}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                  hasAccessibilityPermission
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                    : 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-500/40 text-sky-300'
+                }`}
+              >
+                {hasAccessibilityPermission ? '📡 Radar Auto ON' : '📡 Ativar Radar Auto'}
+              </button>
+            )}
             {isNativeAndroid() && hasOverlayPermission && (
               <button
                 onClick={() => nativeBridge.launchFloatingPipWindowNow()}

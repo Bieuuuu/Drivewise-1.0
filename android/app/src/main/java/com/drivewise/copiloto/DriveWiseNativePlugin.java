@@ -37,14 +37,8 @@ public class DriveWiseNativePlugin extends Plugin {
 
     @PluginMethod
     public void checkAccessibilityPermission(PluginCall call) {
-        Context ctx = getContext();
-        boolean location =
-            ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED;
         JSObject ret = new JSObject();
-        ret.put("granted", location);
+        ret.put("granted", FloatingOverlayService.isAutoRadarActive);
         call.resolve(ret);
     }
 
@@ -52,7 +46,7 @@ public class DriveWiseNativePlugin extends Plugin {
     public void requestAccessibilityPermission(PluginCall call) {
         if (getActivity() instanceof MainActivity) {
             MainActivity act = (MainActivity) getActivity();
-            act.runOnUiThread(act::requestAndroidRuntimePermissions);
+            act.runOnUiThread(() -> act.requestScreenCaptureForAutoRadar(false));
         }
         JSObject ret = new JSObject();
         ret.put("success", true);
@@ -144,7 +138,7 @@ public class DriveWiseNativePlugin extends Plugin {
 
         JSObject ret = new JSObject();
         ret.put("overlay", overlay);
-        ret.put("accessibility", location);
+        ret.put("accessibility", FloatingOverlayService.isAutoRadarActive);
         ret.put("location", location);
         ret.put("notifications", notifications);
         ret.put("overlayRunning", FloatingOverlayService.isRunning);
