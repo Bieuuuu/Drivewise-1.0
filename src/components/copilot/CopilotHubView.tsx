@@ -153,6 +153,40 @@ export const CopilotHubView: React.FC = () => {
           </button>
         </div>
 
+        {/* Zero-Touch Auto-Read (MediaProjection + ML Kit OCR) */}
+        {isNativeAndroid() && (
+          <div className="mt-2 pt-2 border-t border-white/[0.05]">
+            <button
+              id="btn-hub-autoread"
+              onClick={toggleAutoRead}
+              className={`w-full p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between transition-colors ${
+                isAutoReading
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                  : 'bg-white/[0.03] border-white/[0.06] text-slate-300 hover:bg-white/[0.06]'
+              }`}
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                <ScanEye className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Leitura Automática (Zero-Toque)</span>
+              </span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${
+                  isAutoReading
+                    ? 'bg-emerald-500 text-slate-950 font-bold'
+                    : 'bg-white/[0.08] text-slate-400'
+                }`}
+              >
+                {isAutoReading ? 'LENDO' : 'ATIVAR'}
+              </span>
+            </button>
+            {lastAutoReading && (
+              <p className="mt-1.5 text-[10px] text-slate-500 truncate">
+                Última leitura: {lastAutoReading}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Android System Overlay Permission Bar */}
         <div className="mt-2.5 pt-2.5 border-t border-white/[0.05] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[11px] text-slate-400">

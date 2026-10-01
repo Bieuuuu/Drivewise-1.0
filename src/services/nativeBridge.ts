@@ -42,7 +42,7 @@ export interface NativeBridgePlugin {
   updateOverlayData: (payload: NativeOverlayRidePayload) => Promise<{ success: boolean }>;
   startScreenCaptureAutoRead: () => Promise<{ success: boolean }>;
   stopScreenCaptureAutoRead: () => Promise<{ success: boolean }>;
-  getScreenCaptureStatusJson: () => Promise<string>;
+  getScreenCaptureStatus: () => Promise<ScreenCaptureStatus>;
 }
 
 export interface ScreenCaptureStatus {
