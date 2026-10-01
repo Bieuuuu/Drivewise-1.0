@@ -1297,6 +1297,94 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [overlayPref.isEnabled, hasOverlayPermission]);
 
+  // Helper to credit a completed ride's earnings, distance, and duration to today's active or daily shift
+  const creditRideEarningsToToday = useCallback(
+    (platformKey: RideOpportunity['platform'], earned: number, totalKm: number, totalMin: number) => {
+      if (earned <= 0) return;
+      const fuelConsumption = totalKm / (user.avgConsumptionKmPerLiter || 11.5);
+      const addedFuelCost = Number((fuelConsumption * (user.avgFuelPrice || 5.89)).toFixed(2));
+
+      if (activeSession) {
+        setActiveSession((prev) => {
+          if (!prev) return null;
+          const currentEarnings = { ...prev.platformEarnings };
+          if (platformKey in currentEarnings) {
+            const key = platformKey as keyof typeof currentEarnings;
+            currentEarnings[key] = Number(((currentEarnings[key] || 0) + earned).toFixed(2));
+          } else {
+            currentEarnings.Outros = Number(((currentEarnings.Outros || 0) + earned).toFixed(2));
+          }
+
+          return {
+            ...prev,
+            income: Number((prev.income + earned).toFixed(2)),
+            distanceKm: Number((prev.distanceKm + totalKm).toFixed(1)),
+            platformEarnings: currentEarnings,
+          };
+        });
+        setCurrentGpsDistance((prev) => Number((prev + totalKm).toFixed(2)));
+      } else {
+        setSessions((prev) => {
+          const todayIdx = prev.findIndex((s) => s.date === CURRENT_DATE_STR && s.status === 'completed');
+          if (todayIdx >= 0) {
+            const existing = prev[todayIdx];
+            const currentEarnings = {
+              Uber: existing.platformEarnings?.Uber || 0,
+              '99': existing.platformEarnings?.['99'] || 0,
+              InDrive: existing.platformEarnings?.InDrive || 0,
+              Outros: existing.platformEarnings?.Outros || 0,
+            };
+            if (platformKey in currentEarnings) {
+              const key = platformKey as keyof typeof currentEarnings;
+              currentEarnings[key] = Number(((currentEarnings[key] || 0) + earned).toFixed(2));
+            } else {
+              currentEarnings.Outros = Number(((currentEarnings.Outros || 0) + earned).toFixed(2));
+            }
+
+            const updatedSession: WorkSession = {
+              ...existing,
+              income: Number((existing.income + earned).toFixed(2)),
+              distanceKm: Number((existing.distanceKm + totalKm).toFixed(1)),
+              durationMinutes: existing.durationMinutes + Math.max(1, Math.round(totalMin)),
+              estimatedFuelCost: Number(((existing.estimatedFuelCost || 0) + addedFuelCost).toFixed(2)),
+              platformEarnings: currentEarnings,
+              endTime: new Date().toISOString(),
+            };
+            const copy = [...prev];
+            copy[todayIdx] = updatedSession;
+            return copy;
+          } else {
+            const nowIso = new Date().toISOString();
+            const currentEarnings = {
+              Uber: platformKey === 'Uber' ? earned : 0,
+              '99': platformKey === '99' ? earned : 0,
+              InDrive: platformKey === 'InDrive' ? earned : 0,
+              Outros: platformKey === 'Outros' ? earned : 0,
+            };
+            const newDailySession: WorkSession = {
+              id: `ws-${Date.now()}`,
+              userId: user.email || 'user-1',
+              date: CURRENT_DATE_STR,
+              shiftNumber: 1,
+              startTime: nowIso,
+              endTime: nowIso,
+              durationMinutes: Math.max(5, Math.round(totalMin)),
+              startLocation: 'Corridas registradas via Copiloto',
+              distanceKm: Number(totalKm.toFixed(1)),
+              income: Number(earned.toFixed(2)),
+              platformEarnings: currentEarnings,
+              estimatedFuelCost: addedFuelCost,
+              status: 'completed',
+              createdAt: nowIso,
+            };
+            return [newDailySession, ...prev];
+          }
+        });
+      }
+    },
+    [activeSession, user.avgConsumptionKmPerLiter, user.avgFuelPrice, user.email]
+  );
+
   const addRideOpportunity = useCallback((rideData: Omit<RideOpportunity, 'id' | 'createdAt' | 'updatedAt'>): RideOpportunity => {
     const now = new Date().toISOString();
     const newRide: RideOpportunity = {
@@ -1308,23 +1396,29 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setRides((prev) => [newRide, ...prev]);
     setLastAnalyzedRide(newRide);
 
-    // Push evaluated ride to Native Android FloatingOverlayService so it shows outside the app
     const totalDistKm = (newRide.distanceToPassengerKm || 0) + (newRide.estimatedTripDistanceKm || 0);
     const totalMin = (newRide.estimatedTimeToPassengerMin || 0) + (newRide.estimatedTripTimeMin || 0);
-    nativeBridge
-      .updateOverlayData({
-        platform: newRide.platform,
-        grossValue: newRide.offeredValue,
-        distanceKm: totalDistKm > 0 ? totalDistKm : 5.0,
-        durationMin: totalMin > 0 ? totalMin : 15,
-        netProfit: newRide.netProfit,
-        profitPerKm: newRide.netPerKm,
-        hourlyRate: newRide.netPerHour,
-        score: newRide.score,
-        recommendation: newRide.scoreTier,
-        expand: true,
-      })
-      .catch(() => {});
+
+    if (newRide.status === 'completed') {
+      const earned = newRide.finalValue ?? newRide.offeredValue ?? 0;
+      creditRideEarningsToToday(newRide.platform, earned, totalDistKm, totalMin);
+    } else if (newRide.status === 'received' || newRide.status === 'accepted') {
+      // Push evaluated ride to Native Android FloatingOverlayService so it shows outside the app
+      nativeBridge
+        .updateOverlayData({
+          platform: newRide.platform,
+          grossValue: newRide.offeredValue,
+          distanceKm: totalDistKm > 0 ? totalDistKm : 5.0,
+          durationMin: totalMin > 0 ? totalMin : 15,
+          netProfit: newRide.netProfit,
+          profitPerKm: newRide.netPerKm,
+          hourlyRate: newRide.netPerHour,
+          score: newRide.score,
+          recommendation: newRide.scoreTier,
+          expand: true,
+        })
+        .catch(() => {});
+    }
 
     // Audio & voice triggers based on settings
     if (overlayPref.enableSoundAlerts || drivingMode.soundAlerts) {
@@ -1339,12 +1433,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     return newRide;
-  }, [overlayPref.enableSoundAlerts, overlayPref.enableVoiceAlerts, drivingMode.soundAlerts, drivingMode.isActive, drivingMode.voiceAlerts]);
+  }, [overlayPref.enableSoundAlerts, overlayPref.enableVoiceAlerts, drivingMode.soundAlerts, drivingMode.isActive, drivingMode.voiceAlerts, creditRideEarningsToToday]);
 
-  // Listen for rides captured outside the app by DriveWiseAccessibilityService
+  // Listen for rides evaluated/accepted/completed/rejected in the Native FloatingOverlayService
   useEffect(() => {
     const handleNativeRideDetected = (event: Event) => {
       const customEvent = event as CustomEvent<{
+        action?: 'accepted' | 'completed' | 'rejected' | 'received';
         platform?: string;
         grossValue?: number;
         totalDistanceKm?: number;
@@ -1358,39 +1453,99 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         rawPlatform === '99' ? '99' : rawPlatform === 'InDrive' ? 'InDrive' : 'Uber';
 
       const totalDist = Math.max(0.5, Number(detail.totalDistanceKm));
-      const pickupKm = Number((totalDist * 0.18).toFixed(1));
+      const pickupKm = Number((totalDist * 0.15).toFixed(1));
       const tripKm = Number(Math.max(0.5, totalDist - pickupKm).toFixed(1));
-      const totalMin = Math.max(4, Number(detail.durationMinutes || Math.round(totalDist * 2.2)));
+      const totalMin = Math.max(2, Number(detail.durationMinutes || Math.round(totalDist * 2.2)));
       const pickupMin = Math.max(1, Math.round(totalMin * 0.2));
-      const tripMin = Math.max(3, totalMin - pickupMin);
+      const tripMin = Math.max(1, totalMin - pickupMin);
+      const grossVal = Number(detail.grossValue);
 
       const evaluated = evaluateRideOpportunity(
         {
           platform,
-          offeredValue: Number(detail.grossValue),
+          offeredValue: grossVal,
           distanceToPassengerKm: pickupKm,
           estimatedTripDistanceKm: tripKm,
           estimatedTimeToPassengerMin: pickupMin,
           estimatedTripTimeMin: tripMin,
           surgeMultiplier: 1.0,
           extraCosts: 0,
-          pickupAddress: `Chamada detectada (${platform})`,
-          dropoffAddress: 'Leitura automática em tempo real',
+          pickupAddress: `Corrida ${platform}`,
+          dropoffAddress: `${totalDist.toFixed(1)} km totais • ${totalMin} min`,
         },
         decisionRules,
         activeVehicleProfile,
-        user.email || 'user-1',
-        activeSession?.id
+        0,
+        user.dailyGoal || 400
       );
 
-      addRideOpportunity(evaluated);
+      const now = new Date().toISOString();
+      const actionStatus: RideStatus =
+        detail.action === 'completed'
+          ? 'completed'
+          : detail.action === 'accepted'
+          ? 'accepted'
+          : detail.action === 'rejected'
+          ? 'rejected'
+          : 'received';
+
+      const newRide: RideOpportunity = {
+        id: `ride-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        userId: user.email || 'user-1',
+        workSessionId: activeSession?.id,
+        platform,
+        status: actionStatus,
+        offeredValue: grossVal,
+        finalValue: actionStatus === 'completed' || actionStatus === 'accepted' ? grossVal : undefined,
+        distanceToPassengerKm: pickupKm,
+        estimatedTripDistanceKm: tripKm,
+        actualTripDistanceKm: actionStatus === 'completed' ? tripKm : undefined,
+        estimatedTimeToPassengerMin: pickupMin,
+        estimatedTripTimeMin: tripMin,
+        actualTripTimeMin: actionStatus === 'completed' ? tripMin : undefined,
+        surgeMultiplier: 1.0,
+        extraCosts: 0,
+        estimatedProfit: evaluated.netProfit,
+        netProfit: evaluated.netProfit,
+        grossPerKm: evaluated.grossPerKm,
+        netPerKm: evaluated.netPerKm,
+        grossPerHour: evaluated.grossPerHour,
+        netPerHour: evaluated.netPerHour,
+        deadheadPercent: evaluated.deadheadPercent,
+        score: evaluated.score,
+        scoreTier: evaluated.scoreTier,
+        scoreReason: evaluated.scoreReason,
+        recommendation: evaluated.recommendation,
+        ruleAlerts: evaluated.ruleAlerts,
+        decisionReason:
+          actionStatus === 'rejected' ? 'Recusada pelo motorista no Copiloto Flutuante' : undefined,
+        pickupAddress: `Corrida ${platform} (${totalDist.toFixed(1)} km)`,
+        dropoffAddress: `Lucro líq. R$ ${evaluated.netProfit.toFixed(2)} (${totalMin} min)`,
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      setRides((prev) => [newRide, ...prev]);
+      setLastAnalyzedRide(newRide);
+
+      if (actionStatus === 'completed') {
+        creditRideEarningsToToday(platform, grossVal, totalDist, totalMin);
+      }
     };
 
     window.addEventListener('drivewise:native-ride-detected', handleNativeRideDetected);
     return () => {
       window.removeEventListener('drivewise:native-ride-detected', handleNativeRideDetected);
     };
-  }, [user.email, decisionRules, activeVehicleProfile, addRideOpportunity]);
+  }, [
+    user.email,
+    user.dailyGoal,
+    decisionRules,
+    activeVehicleProfile,
+    activeSession?.id,
+    creditRideEarningsToToday,
+  ]);
 
   // Automatic debounced Cloud Sync when authenticated
   useEffect(() => {
@@ -1471,7 +1626,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     actualTripTimeMin?: number,
     finalValue?: number
   ) => {
-    let completedTarget: RideOpportunity | undefined;
+    const targetRide = rides.find((r) => r.id === id);
 
     setRides((prev) =>
       prev.map((r) => {
@@ -1488,36 +1643,22 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             finalValue: finalVal,
             updatedAt: new Date().toISOString(),
           };
-          completedTarget = updated;
           return updated;
         }
         return r;
       })
     );
 
-    // If an active session is running, automatically integrate this completed ride's earnings and km
-    if (activeSession && completedTarget) {
-      const earned = (completedTarget as RideOpportunity).finalValue || (completedTarget as RideOpportunity).offeredValue || 0;
-      const tripKm = (completedTarget as RideOpportunity).actualTripDistanceKm || (completedTarget as RideOpportunity).estimatedTripDistanceKm || 0;
-      const platformKey = (completedTarget as RideOpportunity).platform;
+    if (targetRide) {
+      const earned = finalValue ?? targetRide.finalValue ?? targetRide.offeredValue ?? 0;
+      const totalKm =
+        (targetRide.distanceToPassengerKm || 0) +
+        (actualTripDistanceKm ?? targetRide.actualTripDistanceKm ?? targetRide.estimatedTripDistanceKm ?? 0);
+      const totalMin =
+        (targetRide.estimatedTimeToPassengerMin || 0) +
+        (actualTripTimeMin ?? targetRide.actualTripTimeMin ?? targetRide.estimatedTripTimeMin ?? 10);
 
-      setActiveSession((prev) => {
-        if (!prev) return null;
-        const currentEarnings = { ...prev.platformEarnings };
-        if (platformKey in currentEarnings) {
-          const key = platformKey as keyof typeof currentEarnings;
-          currentEarnings[key] = Number(((currentEarnings[key] || 0) + earned).toFixed(2));
-        } else {
-          currentEarnings.Outros = Number(((currentEarnings.Outros || 0) + earned).toFixed(2));
-        }
-
-        return {
-          ...prev,
-          income: Number((prev.income + earned).toFixed(2)),
-          distanceKm: Number((prev.distanceKm + tripKm).toFixed(1)),
-          platformEarnings: currentEarnings,
-        };
-      });
+      creditRideEarningsToToday(targetRide.platform, earned, totalKm, totalMin);
     }
   };
 

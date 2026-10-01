@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.provider.Settings;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -16,8 +17,9 @@ public class DriveWiseNativePlugin extends Plugin {
 
     @PluginMethod
     public void checkOverlayPermission(PluginCall call) {
+        Context ctx = getContext();
+        boolean granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx);
         JSObject ret = new JSObject();
-        boolean granted = MainActivity.isPipSupported(getContext());
         ret.put("granted", granted);
         call.resolve(ret);
     }
@@ -26,10 +28,7 @@ public class DriveWiseNativePlugin extends Plugin {
     public void requestOverlayPermission(PluginCall call) {
         if (getActivity() instanceof MainActivity) {
             MainActivity act = (MainActivity) getActivity();
-            act.runOnUiThread(() -> {
-                act.requestAndroidRuntimePermissions();
-                act.setPipHudEnabled(true);
-            });
+            act.runOnUiThread(act::requestSystemOverlayPermission);
         }
         JSObject ret = new JSObject();
         ret.put("success", true);
@@ -73,19 +72,17 @@ public class DriveWiseNativePlugin extends Plugin {
 
     @PluginMethod
     public void startFloatingOverlay(PluginCall call) {
-        boolean enterPipNow = call.getBoolean("enterPipNow", false);
+        boolean expandNow = call.getBoolean("enterPipNow", false);
+        boolean started = false;
         if (getActivity() instanceof MainActivity) {
             MainActivity act = (MainActivity) getActivity();
-            act.runOnUiThread(() -> {
-                act.setPipHudEnabled(true);
-                act.showHudNotification();
-                if (enterPipNow) {
-                    act.enterFloatingPipHud();
-                }
-            });
+            if (act.canDrawSystemOverlay()) {
+                act.runOnUiThread(() -> act.startRealFloatingOverlayService(expandNow));
+                started = true;
+            }
         }
         JSObject ret = new JSObject();
-        ret.put("success", true);
+        ret.put("success", started);
         call.resolve(ret);
     }
 
@@ -93,10 +90,7 @@ public class DriveWiseNativePlugin extends Plugin {
     public void stopFloatingOverlay(PluginCall call) {
         if (getActivity() instanceof MainActivity) {
             MainActivity act = (MainActivity) getActivity();
-            act.runOnUiThread(() -> {
-                act.setPipHudEnabled(false);
-                act.cancelHudNotification();
-            });
+            act.runOnUiThread(act::stopRealFloatingOverlayService);
         }
         JSObject ret = new JSObject();
         ret.put("success", true);
@@ -107,27 +101,13 @@ public class DriveWiseNativePlugin extends Plugin {
     public void updateOverlayData(PluginCall call) {
         if (getActivity() instanceof MainActivity) {
             MainActivity act = (MainActivity) getActivity();
-            String platform = call.getString("platform", "UBER");
-            double gross = call.getDouble("grossValue", 34.50);
-            double distance = call.getDouble("distanceKm", 9.0);
-            int duration = call.getInt("durationMin", 20);
-            double netProfit = call.getDouble("netProfit", 24.15);
-            double profitPerKm = call.getDouble("profitPerKm", 2.68);
-            double hourlyRate = call.getDouble("hourlyRate", 69.0);
-            int score = call.getInt("score", 94);
-            String tier = call.getString("recommendation", "EXCELENTE");
+            String platform = call.getString("platform", "Uber");
+            double gross = call.getDouble("grossValue", 0.0);
+            double distance = call.getDouble("distanceKm", 5.0);
+            int duration = call.getInt("durationMin", 12);
+            boolean expand = call.getBoolean("expand", false);
             act.runOnUiThread(() ->
-                act.updateHudMetrics(
-                    platform,
-                    gross,
-                    distance,
-                    duration,
-                    netProfit,
-                    profitPerKm,
-                    hourlyRate,
-                    score,
-                    tier
-                )
+                act.pushRideDataToFloatingOverlay(platform, gross, distance, duration, expand)
             );
         }
         JSObject ret = new JSObject();
@@ -151,6 +131,7 @@ public class DriveWiseNativePlugin extends Plugin {
     @PluginMethod
     public void checkAllPermissions(PluginCall call) {
         Context ctx = getContext();
+        boolean overlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx);
         boolean location =
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED ||
@@ -160,14 +141,13 @@ public class DriveWiseNativePlugin extends Plugin {
             Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED;
-        boolean pipSupported = MainActivity.isPipSupported(ctx);
 
         JSObject ret = new JSObject();
-        ret.put("overlay", pipSupported && (location || notifications));
+        ret.put("overlay", overlay);
         ret.put("accessibility", location);
         ret.put("location", location);
         ret.put("notifications", notifications);
-        ret.put("overlayRunning", MainActivity.isPipHudActive);
+        ret.put("overlayRunning", FloatingOverlayService.isRunning);
         call.resolve(ret);
     }
 }

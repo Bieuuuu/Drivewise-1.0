@@ -43,6 +43,9 @@ export const JourneyView: React.FC = () => {
     cancelActiveJourney,
     currentDateStr,
     isMinimalistMode,
+    setIsSimulatorOpen,
+    setIsFuelModalOpen,
+    setIsExpenseModalOpen,
   } = useDriveWise();
 
   // Dialog states
@@ -307,30 +310,42 @@ export const JourneyView: React.FC = () => {
             </div>
           )}
 
-          {/* Desktop/Preview Simulation Toggle (Hidden in Minimalist Mode) */}
-          {!isMinimalistMode && (
-            <div className="bg-[#0C0C0D] border border-white/[0.06] rounded-xl p-3 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-amber-400" />
-                <div>
-                  <p className="font-semibold text-slate-200">Simulador de Movimento</p>
-                  <p className="text-[10px] text-slate-400">
-                    {isSimulatingMovement ? 'Acumulando km (~35 km/h)' : 'Apenas GPS real do celular'}
-                  </p>
-                </div>
-              </div>
+          {/* Quick Operational Actions during Shift */}
+          <div className="bg-[#0C0C0D] border border-white/[0.08] rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                Lançamentos Rápidos no Turno
+              </span>
+              <span className="text-[10px] text-slate-400">Soma direto no dia</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
               <button
-                onClick={toggleMovementSimulation}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  isSimulatingMovement
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                    : 'bg-white/[0.05] text-slate-400 border border-white/[0.08]'
-                }`}
+                type="button"
+                onClick={() => setIsSimulatorOpen(true)}
+                className="py-2 px-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
               >
-                {isSimulatingMovement ? 'Ativo' : 'Pausado'}
+                <Zap className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">+ Corrida</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFuelModalOpen(true)}
+                className="py-2 px-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-amber-300 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+              >
+                <Fuel className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Abastecer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExpenseModalOpen(true)}
+                className="py-2 px-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-rose-300 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+              >
+                <Activity className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">+ Despesa</span>
               </button>
             </div>
-          )}
+          </div>
 
           {/* Action Buttons: Finish or Cancel */}
           <div className="space-y-2 pt-2">

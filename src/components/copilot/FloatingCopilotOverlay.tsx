@@ -27,6 +27,7 @@ import {
 import { useDriveWise } from '../../context/DriveWiseContext';
 import { DriveWiseLogo } from '../DriveWiseLogo';
 import { speakCopilotMessage, playCopilotSound } from '../../utils/copilotCalculations';
+import { isNativeAndroid } from '../../services/nativeBridge';
 import { RideOpportunity, PlatformType } from '../../types';
 
 // Score visual styling helper
@@ -77,6 +78,8 @@ export const FloatingCopilotOverlay: React.FC = () => {
     cancelRideOpportunity,
     rerouteOrUpdateRide,
     setIsRideAnalysisModalOpen,
+    setIsSimulatorOpen,
+    isNativeOverlayRunning,
     user,
     drivingMode,
     activeVehicleProfile,
@@ -419,6 +422,8 @@ export const FloatingCopilotOverlay: React.FC = () => {
 
   if (!overlayPref.isEnabled) return null;
   if (overlayPref.showDuringJourneyOnly && !isJourneyActive) return null;
+  // On native Android, when the real system WindowManager overlay is running and no expanded card is open in-app, avoid duplicate floating bubbles
+  if (isNativeAndroid() && isNativeOverlayRunning && !overlayPref.isExpanded) return null;
 
   return (
     <div
@@ -554,11 +559,22 @@ export const FloatingCopilotOverlay: React.FC = () => {
                   <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-1.5">
                     <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-emerald-400">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Radar Ativo & Pronto
+                      Copiloto Ativo & Pronto
                     </div>
                     <p className="text-[10px] text-slate-400 leading-relaxed">
-                      O DriveWise analisa automaticamente chamadas recebidas nos apps de transporte, calculando ganho líquido por km e retorno seguro.
+                      Calcule o lucro líquido real de qualquer corrida ou registre uma viagem concluída no seu turno.
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSimulatorOpen(true);
+                        setIsMenuOpen(false);
+                      }}
+                      className="w-full mt-1.5 py-2 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] font-mono flex items-center justify-center gap-1.5"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Calcular / Lançar Corrida</span>
+                    </button>
                     {lastAnalyzedRide && (
                       <button
                         type="button"
