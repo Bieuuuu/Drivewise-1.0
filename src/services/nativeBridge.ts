@@ -33,6 +33,7 @@ export interface NativeGoogleSignInResult {
   idToken?: string;
   email?: string;
   displayName?: string;
+  googleId?: string;
   photoUrl?: string;
   error?: string;
 }
@@ -60,6 +61,8 @@ declare global {
       requestOverlayPermission: () => void;
       openAppDetailsSettings?: () => void;
       startNativeGoogleSignIn?: () => void;
+      getLastGoogleSignInResultJson?: () => string;
+      clearLastGoogleSignInResult?: () => void;
       checkAccessibilityPermission: () => boolean;
       requestAccessibilityPermission: () => void;
       requestRuntimePermissions: () => void;
@@ -155,8 +158,24 @@ export const nativeBridge: NativeBridgePlugin = {
       return { success: false, error: 'Ambiente não suportado.' };
     }
 
+    try {
+      window.DriveWiseNativeBridge?.clearLastGoogleSignInResult?.();
+    } catch {}
+
     return new Promise<NativeGoogleSignInResult>((resolve) => {
       let timeoutId: any = null;
+      let checkIntervalId: any = null;
+      let hasFinished = false;
+
+      const finish = (result: NativeGoogleSignInResult) => {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(timeoutId);
+        clearInterval(checkIntervalId);
+        window.removeEventListener('drivewise:google-sign-in-result', handleResult);
+        window.removeEventListener('focus', checkBridgeState);
+        resolve(result);
+      };
 
       const handleResult = (event: Event) => {
         const customEvent = event as CustomEvent<{
@@ -165,34 +184,65 @@ export const nativeBridge: NativeBridgePlugin = {
             idToken?: string;
             email?: string;
             displayName?: string;
+            googleId?: string;
             photoUrl?: string;
           };
           error?: string;
         }>;
-        clearTimeout(timeoutId);
-        window.removeEventListener('drivewise:google-sign-in-result', handleResult);
 
-        if (customEvent.detail?.success && customEvent.detail.data?.idToken) {
-          resolve({
+        if (customEvent.detail?.success && customEvent.detail.data?.email) {
+          finish({
             success: true,
-            idToken: customEvent.detail.data.idToken,
+            idToken: customEvent.detail.data.idToken || '',
             email: customEvent.detail.data.email,
-            displayName: customEvent.detail.data.displayName,
-            photoUrl: customEvent.detail.data.photoUrl,
+            displayName: customEvent.detail.data.displayName || '',
+            googleId: customEvent.detail.data.googleId || '',
+            photoUrl: customEvent.detail.data.photoUrl || '',
           });
         } else {
-          resolve({
+          finish({
             success: false,
             error: customEvent.detail?.error || 'Login com Google cancelado ou não concluído.',
           });
         }
       };
 
+      const checkBridgeState = () => {
+        if (typeof window !== 'undefined' && window.DriveWiseNativeBridge?.getLastGoogleSignInResultJson) {
+          try {
+            const raw = window.DriveWiseNativeBridge.getLastGoogleSignInResultJson();
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.hasResult) {
+                if (parsed.success && parsed.data?.email) {
+                  finish({
+                    success: true,
+                    idToken: parsed.data.idToken || '',
+                    email: parsed.data.email,
+                    displayName: parsed.data.displayName || '',
+                    googleId: parsed.data.googleId || '',
+                    photoUrl: parsed.data.photoUrl || '',
+                  });
+                } else if (parsed.error) {
+                  finish({
+                    success: false,
+                    error: parsed.error,
+                  });
+                }
+              }
+            }
+          } catch {}
+        }
+      };
+
       window.addEventListener('drivewise:google-sign-in-result', handleResult);
+      window.addEventListener('focus', checkBridgeState);
+
+      // Periodically check bridge state every 400ms for fast responsive resolution
+      checkIntervalId = setInterval(checkBridgeState, 400);
 
       timeoutId = setTimeout(() => {
-        window.removeEventListener('drivewise:google-sign-in-result', handleResult);
-        resolve({ success: false, error: 'Tempo limite ao aguardar resposta do Google Play Services.' });
+        finish({ success: false, error: 'Tempo limite ao aguardar resposta do Google Play Services.' });
       }, 90000);
 
       if (window.DriveWiseNativeBridge?.startNativeGoogleSignIn) {
@@ -200,25 +250,19 @@ export const nativeBridge: NativeBridgePlugin = {
           window.DriveWiseNativeBridge.startNativeGoogleSignIn();
           return;
         } catch (e: any) {
-          clearTimeout(timeoutId);
-          window.removeEventListener('drivewise:google-sign-in-result', handleResult);
-          resolve({ success: false, error: e?.message || 'Falha ao iniciar Google Sign-In.' });
+          finish({ success: false, error: e?.message || 'Falha ao iniciar Google Sign-In.' });
           return;
         }
       }
 
       if (window.Capacitor?.Plugins?.DriveWiseNative?.nativeGoogleSignIn) {
         window.Capacitor.Plugins.DriveWiseNative.nativeGoogleSignIn().catch((e: any) => {
-          clearTimeout(timeoutId);
-          window.removeEventListener('drivewise:google-sign-in-result', handleResult);
-          resolve({ success: false, error: e?.message || 'Falha no plugin Google Sign-In.' });
+          finish({ success: false, error: e?.message || 'Falha no plugin Google Sign-In.' });
         });
         return;
       }
 
-      clearTimeout(timeoutId);
-      window.removeEventListener('drivewise:google-sign-in-result', handleResult);
-      resolve({ success: false, error: 'Google Play Services não disponível neste dispositivo.' });
+      finish({ success: false, error: 'Google Play Services não disponível neste dispositivo.' });
     });
   },
 

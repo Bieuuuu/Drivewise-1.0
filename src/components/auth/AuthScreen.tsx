@@ -39,7 +39,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
     const result = await loginWithGoogle();
     setSubmitting(false);
     if (!result.success) {
-      setErrorMessage(result.error || 'Não foi possível completar o login com o Google.');
+      const err = result.error || 'Não foi possível completar o login com o Google.';
+      setErrorMessage(err);
+      if (err.includes('Conta encontrada para ')) {
+        const matched = err.match(/Conta encontrada para ([^.]+@[^.]+?\.[a-z]{2,})/i);
+        if (matched && matched[1]) {
+          setEmail(matched[1]);
+          setMode('login');
+        }
+      }
     } else {
       if (onSuccess) onSuccess();
     }
@@ -170,7 +178,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
             disabled={submitting || isAuthLoading}
             className="w-full h-12 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.98] text-slate-950 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-3 shadow-md disabled:opacity-50 cursor-pointer"
           >
-            {submitting ? (
+            {submitting || isAuthLoading ? (
               <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
             ) : (
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -192,8 +200,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                 />
               </svg>
             )}
-            <span>{mode === 'login' ? 'Continuar com o Google' : 'Cadastrar com o Google'}</span>
+            <span>
+              {submitting || isAuthLoading
+                ? 'Conectando conta Google...'
+                : mode === 'login'
+                ? 'Continuar com o Google'
+                : 'Cadastrar com o Google'}
+            </span>
           </button>
+
+          {/* Instant Visible Alert / Error Banner */}
+          {errorMessage && (
+            <div className="mt-3.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-start gap-2.5 text-rose-300 text-xs animate-fade-in">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <span className="font-medium">{errorMessage}</span>
+              </div>
+            </div>
+          )}
 
           {/* Clean Minimalist Divider */}
           <div className="relative my-5">
@@ -283,13 +307,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                     className="w-full h-11 pl-10 pr-3 rounded-xl bg-black/40 border border-white/[0.1] focus:border-white/40 focus:outline-none text-white text-xs placeholder:text-slate-500 transition-colors"
                   />
                 </div>
-              </div>
-            )}
-
-            {errorMessage && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-2.5 text-rose-300 text-xs">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                <span className="leading-snug">{errorMessage}</span>
               </div>
             )}
 

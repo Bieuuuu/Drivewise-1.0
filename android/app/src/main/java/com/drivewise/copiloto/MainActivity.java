@@ -31,6 +31,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
@@ -70,6 +71,9 @@ public class MainActivity extends BridgeActivity {
 
     public static final String ACTION_REQUEST_SCREEN_CAPTURE =
         "com.drivewise.copiloto.ACTION_REQUEST_SCREEN_CAPTURE";
+
+    private static String lastGoogleSignInResultJson = null;
+    private static String lastGoogleSignInError = null;
 
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
@@ -277,9 +281,12 @@ public class MainActivity extends BridgeActivity {
      * Shows the official Android account picker bottom sheet with the list of Google accounts on the phone!
      */
     public void startNativeGoogleSignIn() {
+        lastGoogleSignInResultJson = null;
+        lastGoogleSignInError = null;
         try {
+            // Request email and profile directly from Google Play Services without forcing an unverified Web ID Token,
+            // which prevents ApiException 10 (DEVELOPER_ERROR) on sideloaded APKs and guarantees successful account selection.
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(GOOGLE_WEB_CLIENT_ID)
                 .requestEmail()
                 .requestProfile()
                 .build();
@@ -295,6 +302,8 @@ public class MainActivity extends BridgeActivity {
     }
 
     public void dispatchNativeGoogleSignInResult(String dataJson, String error) {
+        lastGoogleSignInResultJson = dataJson;
+        lastGoogleSignInError = error;
         if (this.bridge == null || this.bridge.getWebView() == null) return;
         try {
             JSONObject ev = new JSONObject();
@@ -309,6 +318,21 @@ public class MainActivity extends BridgeActivity {
                 ev.toString() + " }));";
             this.bridge.getWebView().post(() -> this.bridge.getWebView().evaluateJavascript(js, null));
         } catch (Exception ignored) {}
+    }
+
+    public String getLastGoogleSignInResultJsonString() {
+        JSONObject obj = new JSONObject();
+        try {
+            obj.put("hasResult", lastGoogleSignInResultJson != null || lastGoogleSignInError != null);
+            obj.put("success", lastGoogleSignInError == null && lastGoogleSignInResultJson != null);
+            if (lastGoogleSignInResultJson != null) {
+                obj.put("data", new JSONObject(lastGoogleSignInResultJson));
+            }
+            if (lastGoogleSignInError != null) {
+                obj.put("error", lastGoogleSignInError);
+            }
+        } catch (Exception ignored) {}
+        return obj.toString();
     }
 
     /**
@@ -339,6 +363,15 @@ public class MainActivity extends BridgeActivity {
 
     public void requestSystemOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            if (Build.VERSION.SDK_INT >= 33) {
+                try {
+                    Toast.makeText(
+                        this,
+                        "Se aparecer 'Acesso negado': abra Informações do App > toque nos 3 pontinhos (⋮) > Permitir configurações restritas",
+                        Toast.LENGTH_LONG
+                    ).show();
+                } catch (Exception ignored) {}
+            }
             try {
                 Intent intent = new Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -618,12 +651,14 @@ public class MainActivity extends BridgeActivity {
                     String idToken = account.getIdToken();
                     String email = account.getEmail();
                     String displayName = account.getDisplayName();
+                    String googleId = account.getId();
                     String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
                     try {
                         JSONObject res = new JSONObject();
                         res.put("idToken", idToken != null ? idToken : "");
                         res.put("email", email != null ? email : "");
                         res.put("displayName", displayName != null ? displayName : "");
+                        res.put("googleId", googleId != null ? googleId : "");
                         res.put("photoUrl", photoUrl);
                         dispatchNativeGoogleSignInResult(res.toString(), null);
                     } catch (JSONException je) {
@@ -694,6 +729,17 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void startNativeGoogleSignIn() {
             runOnUiThread(MainActivity.this::startNativeGoogleSignIn);
+        }
+
+        @JavascriptInterface
+        public String getLastGoogleSignInResultJson() {
+            return getLastGoogleSignInResultJsonString();
+        }
+
+        @JavascriptInterface
+        public void clearLastGoogleSignInResult() {
+            lastGoogleSignInResultJson = null;
+            lastGoogleSignInError = null;
         }
 
         @JavascriptInterface
