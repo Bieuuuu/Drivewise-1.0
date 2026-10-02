@@ -46,6 +46,7 @@ import com.google.android.gms.tasks.Task;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -618,12 +619,16 @@ public class MainActivity extends BridgeActivity {
                     String email = account.getEmail();
                     String displayName = account.getDisplayName();
                     String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
-                    JSONObject res = new JSONObject();
-                    res.put("idToken", idToken != null ? idToken : "");
-                    res.put("email", email != null ? email : "");
-                    res.put("displayName", displayName != null ? displayName : "");
-                    res.put("photoUrl", photoUrl);
-                    dispatchNativeGoogleSignInResult(res.toString(), null);
+                    try {
+                        JSONObject res = new JSONObject();
+                        res.put("idToken", idToken != null ? idToken : "");
+                        res.put("email", email != null ? email : "");
+                        res.put("displayName", displayName != null ? displayName : "");
+                        res.put("photoUrl", photoUrl);
+                        dispatchNativeGoogleSignInResult(res.toString(), null);
+                    } catch (JSONException je) {
+                        dispatchNativeGoogleSignInResult(null, "Erro ao processar dados da conta: " + je.getMessage());
+                    }
                 } else {
                     dispatchNativeGoogleSignInResult(null, "Nenhuma conta Google selecionada.");
                 }
@@ -634,6 +639,8 @@ public class MainActivity extends BridgeActivity {
                     msg = "Erro ao autenticar com Google (código " + code + "). Você também pode usar seu E-mail e Senha no formulário.";
                 }
                 dispatchNativeGoogleSignInResult(null, msg);
+            } catch (Exception e) {
+                dispatchNativeGoogleSignInResult(null, "Erro ao autenticar com Google: " + e.getMessage());
             }
         }
     }
