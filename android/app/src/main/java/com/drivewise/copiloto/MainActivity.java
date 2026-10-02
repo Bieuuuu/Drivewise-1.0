@@ -285,15 +285,10 @@ public class MainActivity extends BridgeActivity {
         lastGoogleSignInResultJson = null;
         lastGoogleSignInError = null;
         try {
-            GoogleSignInOptions.Builder builder = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
-                .requestProfile();
-            if (GOOGLE_WEB_CLIENT_ID != null && !GOOGLE_WEB_CLIENT_ID.isEmpty()) {
-                try {
-                    builder.requestIdToken(GOOGLE_WEB_CLIENT_ID);
-                } catch (Exception ignored) {}
-            }
-            GoogleSignInOptions gso = builder.build();
+                .requestProfile()
+                .build();
             GoogleSignInClient client = GoogleSignIn.getClient(this, gso);
             Intent signInIntent = client.getSignInIntent();
             startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
