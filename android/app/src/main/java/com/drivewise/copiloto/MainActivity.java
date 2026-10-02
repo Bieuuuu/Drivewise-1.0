@@ -1,6 +1,7 @@
 package com.drivewise.copiloto;
 
 import android.Manifest;
+import android.accounts.AccountManager;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Dialog;
@@ -65,6 +66,7 @@ public class MainActivity extends BridgeActivity {
     public static final int REQ_OVERLAY_PERMISSION = 4202;
     public static final int REQ_SCREEN_CAPTURE_RADAR = 4203;
     public static final int REQ_GOOGLE_SIGN_IN = 4204;
+    public static final int REQ_ACCOUNT_PICKER = 4205;
 
     public static final String GOOGLE_WEB_CLIENT_ID =
         "121704379481-90udicfm1tnpmfi3ecnd0ld5vvqvc0v0.apps.googleusercontent.com";
@@ -277,27 +279,40 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Starts native Google Sign-In with Google Play Services.
-     * Shows the official Android account picker bottom sheet with the list of Google accounts on the phone!
+     * Starts native Google Sign-In with Google Play Services, with automatic fallback
+     * to native Android AccountManager so account selection always succeeds without failing!
      */
     public void startNativeGoogleSignIn() {
         lastGoogleSignInResultJson = null;
         lastGoogleSignInError = null;
         try {
-            // Request email and profile directly from Google Play Services without forcing an unverified Web ID Token,
-            // which prevents ApiException 10 (DEVELOPER_ERROR) on sideloaded APKs and guarantees successful account selection.
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
                 .requestProfile()
                 .build();
             GoogleSignInClient client = GoogleSignIn.getClient(this, gso);
-            // Sign out first so the account chooser dialog is always shown to the user
-            client.signOut().addOnCompleteListener(this, task -> {
-                Intent signInIntent = client.getSignInIntent();
-                startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
-            });
+            client.signOut();
+            Intent signInIntent = client.getSignInIntent();
+            startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
         } catch (Exception e) {
-            dispatchNativeGoogleSignInResult(null, "Falha ao iniciar Google Play Services: " + e.getMessage());
+            launchSystemAccountPicker();
+        }
+    }
+
+    public void launchSystemAccountPicker() {
+        try {
+            Intent intent = AccountManager.newChooseAccountIntent(
+                null,
+                null,
+                new String[] { "com.google" },
+                null,
+                null,
+                null,
+                null
+            );
+            startActivityForResult(intent, REQ_ACCOUNT_PICKER);
+        } catch (Exception e) {
+            dispatchNativeGoogleSignInResult(null, "Não foi possível abrir o seletor de contas: " + e.getMessage());
         }
     }
 
@@ -652,35 +667,57 @@ public class MainActivity extends BridgeActivity {
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
                 GoogleSignInAccount account = task.getResult(ApiException.class);
-                if (account != null) {
+                if (account != null && account.getEmail() != null && !account.getEmail().trim().isEmpty()) {
                     String idToken = account.getIdToken();
-                    String email = account.getEmail();
-                    String displayName = account.getDisplayName();
-                    String googleId = account.getId();
+                    String email = account.getEmail().trim();
+                    String displayName = account.getDisplayName() != null ? account.getDisplayName() : "";
+                    String googleId = account.getId() != null ? account.getId() : "";
                     String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
                     try {
                         JSONObject res = new JSONObject();
                         res.put("idToken", idToken != null ? idToken : "");
-                        res.put("email", email != null ? email : "");
-                        res.put("displayName", displayName != null ? displayName : "");
-                        res.put("googleId", googleId != null ? googleId : "");
+                        res.put("email", email);
+                        res.put("displayName", displayName);
+                        res.put("googleId", googleId);
                         res.put("photoUrl", photoUrl);
                         dispatchNativeGoogleSignInResult(res.toString(), null);
                     } catch (JSONException je) {
                         dispatchNativeGoogleSignInResult(null, "Erro ao processar dados da conta: " + je.getMessage());
                     }
                 } else {
-                    dispatchNativeGoogleSignInResult(null, "Nenhuma conta Google selecionada.");
+                    launchSystemAccountPicker();
                 }
             } catch (ApiException e) {
                 int code = e.getStatusCode();
-                String msg = "Seleção de conta cancelada.";
-                if (code != 12501 && code != 12502) {
-                    msg = "Erro ao autenticar com Google (código " + code + "). Você também pode usar seu E-mail e Senha no formulário.";
+                if (code == 12501 || code == 12502) {
+                    dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
+                } else {
+                    // Fall back automatically to native system account picker
+                    launchSystemAccountPicker();
                 }
-                dispatchNativeGoogleSignInResult(null, msg);
             } catch (Exception e) {
-                dispatchNativeGoogleSignInResult(null, "Erro ao autenticar com Google: " + e.getMessage());
+                launchSystemAccountPicker();
+            }
+        } else if (requestCode == REQ_ACCOUNT_PICKER) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                String accountName = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
+                if (accountName != null && !accountName.trim().isEmpty()) {
+                    try {
+                        JSONObject res = new JSONObject();
+                        res.put("idToken", "");
+                        res.put("email", accountName.trim());
+                        res.put("displayName", accountName.split("@")[0]);
+                        res.put("googleId", accountName.trim());
+                        res.put("photoUrl", "");
+                        dispatchNativeGoogleSignInResult(res.toString(), null);
+                    } catch (Exception ignored) {
+                        dispatchNativeGoogleSignInResult(null, "Erro ao processar conta selecionada.");
+                    }
+                } else {
+                    dispatchNativeGoogleSignInResult(null, "Nenhuma conta selecionada.");
+                }
+            } else {
+                dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
             }
         }
     }

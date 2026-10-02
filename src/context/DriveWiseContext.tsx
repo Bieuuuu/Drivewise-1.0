@@ -787,7 +787,8 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!authUser && nativeEmail) {
             // Deterministic high-entropy password derived from the user's verified Google account
             const googleKey = (nativeRes.googleId || nativeEmail).replace(/[^a-zA-Z0-9]/g, '');
-            const deterministicPassword = `DW_GAuth_${btoa(nativeEmail).replace(/=/g, '')}_${googleKey.slice(0, 14)}!79`;
+            const safeBase = encodeURIComponent(nativeEmail).replace(/[^a-zA-Z0-9]/g, '');
+            const deterministicPassword = `DW_GAuth_${safeBase.slice(0, 16)}_${googleKey.slice(0, 14)}!79aA`;
 
             try {
               // Try signing in with existing account
