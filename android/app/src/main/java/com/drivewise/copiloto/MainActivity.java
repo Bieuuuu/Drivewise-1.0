@@ -32,10 +32,17 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import androidx.annotation.NonNull;
+import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONArray;
@@ -44,15 +51,21 @@ import org.json.JSONObject;
 /**
  * MainActivity for DriveWise Copiloto:
  * 1. Manages real Android System Overlay Permission (SYSTEM_ALERT_WINDOW / Settings.canDrawOverlays)
- * 2. Manages Play-Protect-Safe Screen Capture Authorization (MediaProjectionManager) for ML Kit Auto-Radar OCR
- * 3. Launches & communicates with FloatingOverlayService (real WindowManager floating bubble & HUD calculator)
- * 4. Synchronizes rides accepted/completed/rejected & background GPS distance back to the React WebView
+ * 2. Unlocks Android 13/14/15 Restricted Settings ("Acesso negado ao app") via App Info Details
+ * 3. Native 1-Tap Google Sign-In via Google Play Services (GoogleSignInClient) showing real device accounts
+ * 4. Manages Play-Protect-Safe Screen Capture Authorization (MediaProjectionManager) for ML Kit Auto-Radar OCR
+ * 5. Launches & communicates with FloatingOverlayService (WindowManager floating bubble & HUD calculator)
+ * 6. Synchronizes rides accepted/completed/rejected & background GPS distance back to the React WebView
  */
 public class MainActivity extends BridgeActivity {
 
     public static final int REQ_RUNTIME_PERMISSIONS = 4201;
     public static final int REQ_OVERLAY_PERMISSION = 4202;
     public static final int REQ_SCREEN_CAPTURE_RADAR = 4203;
+    public static final int REQ_GOOGLE_SIGN_IN = 4204;
+
+    public static final String GOOGLE_WEB_CLIENT_ID =
+        "121704379481-90udicfm1tnpmfi3ecnd0ld5vvqvc0v0.apps.googleusercontent.com";
 
     public static final String ACTION_REQUEST_SCREEN_CAPTURE =
         "com.drivewise.copiloto.ACTION_REQUEST_SCREEN_CAPTURE";
@@ -100,7 +113,7 @@ public class MainActivity extends BridgeActivity {
         final WebView mainWebView = this.bridge.getWebView();
         final WebSettings settings = mainWebView.getSettings();
 
-        // 1. Clean WebView User-Agent so Google OAuth treats it as standard Chrome Mobile
+        // 1. Clean WebView User-Agent
         final String cleanUserAgent = buildCleanChromeUserAgent(settings.getUserAgentString());
         settings.setUserAgentString(cleanUserAgent);
 
@@ -112,15 +125,15 @@ public class MainActivity extends BridgeActivity {
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(true);
 
-        // 3. Direct JS Bridge interface so permission & HUD methods work instantaneously
+        // 3. Direct JS Bridge interface
         mainWebView.addJavascriptInterface(new DriveWiseJsBridge(), "DriveWiseNativeBridge");
 
-        // 4. Enable cookies and third-party cookies for Firebase /__/auth/handler & Google OAuth
+        // 4. Enable cookies for Firebase
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(mainWebView, true);
 
-        // 5. Extend Capacitor's BridgeWebChromeClient to handle OAuth popup windows & Geolocation permissions
+        // 5. Extend Capacitor's BridgeWebChromeClient for permissions and popup windows
         mainWebView.setWebChromeClient(new BridgeWebChromeClient(this.bridge) {
             @Override
             public void onGeolocationPermissionsShowPrompt(
@@ -148,6 +161,7 @@ public class MainActivity extends BridgeActivity {
                     return false;
                 }
 
+                // If this is a web OAuth popup, open in Custom Tabs or fullscreen clean Dialog
                 final Dialog oauthDialog = new Dialog(
                     MainActivity.this,
                     android.R.style.Theme_Black_NoTitleBar_Fullscreen
@@ -255,6 +269,45 @@ public class MainActivity extends BridgeActivity {
             intent.setAction(null);
             requestScreenCaptureForAutoRadar(true);
         }
+    }
+
+    /**
+     * Starts native Google Sign-In with Google Play Services.
+     * Shows the official Android account picker bottom sheet with the list of Google accounts on the phone!
+     */
+    public void startNativeGoogleSignIn() {
+        try {
+            GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(GOOGLE_WEB_CLIENT_ID)
+                .requestEmail()
+                .requestProfile()
+                .build();
+            GoogleSignInClient client = GoogleSignIn.getClient(this, gso);
+            // Sign out first so the account chooser dialog is always shown to the user
+            client.signOut().addOnCompleteListener(this, task -> {
+                Intent signInIntent = client.getSignInIntent();
+                startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
+            });
+        } catch (Exception e) {
+            dispatchNativeGoogleSignInResult(null, "Falha ao iniciar Google Play Services: " + e.getMessage());
+        }
+    }
+
+    public void dispatchNativeGoogleSignInResult(String dataJson, String error) {
+        if (this.bridge == null || this.bridge.getWebView() == null) return;
+        try {
+            JSONObject ev = new JSONObject();
+            ev.put("success", error == null);
+            if (dataJson != null) {
+                ev.put("data", new JSONObject(dataJson));
+            }
+            if (error != null) {
+                ev.put("error", error);
+            }
+            final String js = "window.dispatchEvent(new CustomEvent('drivewise:google-sign-in-result', { detail: " +
+                ev.toString() + " }));";
+            this.bridge.getWebView().post(() -> this.bridge.getWebView().evaluateJavascript(js, null));
+        } catch (Exception ignored) {}
     }
 
     /**
@@ -379,10 +432,6 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {}
     }
 
-    /**
-     * Drains all ride events saved by FloatingOverlayService into SharedPreferences
-     * and dispatches them to the React WebView so the shift & dashboard update immediately.
-     */
     public void flushPendingOverlayRideEventsToWebView() {
         if (this.bridge == null || this.bridge.getWebView() == null) return;
         try {
@@ -423,10 +472,6 @@ public class MainActivity extends BridgeActivity {
         );
     }
 
-    /**
-     * Drains background GPS distance accumulated by FloatingOverlayService while the driver
-     * was outside DriveWise (on Uber / 99) and dispatches it to the React WebView.
-     */
     public void flushPendingBackgroundGpsToWebView() {
         if (this.bridge == null || this.bridge.getWebView() == null) return;
         try {
@@ -497,6 +542,11 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /**
+     * Opens the official Android "App Info" screen (Settings.ACTION_APPLICATION_DETAILS_SETTINGS).
+     * This is the exact screen where users on Android 13/14/15 tap the 3 dots (⋮) in the top-right
+     * corner to select "Permitir configurações restritas" and unlock "Sobrepor a outros apps"!
+     */
     public void openAppSystemSettings() {
         try {
             Intent intent = new Intent(
@@ -511,7 +561,6 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        // When the driver leaves DriveWise to open Uber/99, ensure the real Floating Pill is active
         if (canDrawSystemOverlay() && !FloatingOverlayService.isRunning) {
             startRealFloatingOverlayService(false);
         }
@@ -560,6 +609,32 @@ public class MainActivity extends BridgeActivity {
                 } catch (Exception ignored) {}
             }
             notifyWebViewPermissionsUpdated();
+        } else if (requestCode == REQ_GOOGLE_SIGN_IN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            try {
+                GoogleSignInAccount account = task.getResult(ApiException.class);
+                if (account != null) {
+                    String idToken = account.getIdToken();
+                    String email = account.getEmail();
+                    String displayName = account.getDisplayName();
+                    String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
+                    JSONObject res = new JSONObject();
+                    res.put("idToken", idToken != null ? idToken : "");
+                    res.put("email", email != null ? email : "");
+                    res.put("displayName", displayName != null ? displayName : "");
+                    res.put("photoUrl", photoUrl);
+                    dispatchNativeGoogleSignInResult(res.toString(), null);
+                } else {
+                    dispatchNativeGoogleSignInResult(null, "Nenhuma conta Google selecionada.");
+                }
+            } catch (ApiException e) {
+                int code = e.getStatusCode();
+                String msg = "Seleção de conta cancelada.";
+                if (code != 12501 && code != 12502) {
+                    msg = "Erro ao autenticar com Google (código " + code + "). Você também pode usar seu E-mail e Senha no formulário.";
+                }
+                dispatchNativeGoogleSignInResult(null, msg);
+            }
         }
     }
 
@@ -602,6 +677,16 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void requestOverlayPermission() {
             runOnUiThread(MainActivity.this::requestSystemOverlayPermission);
+        }
+
+        @JavascriptInterface
+        public void openAppDetailsSettings() {
+            runOnUiThread(MainActivity.this::openAppSystemSettings);
+        }
+
+        @JavascriptInterface
+        public void startNativeGoogleSignIn() {
+            runOnUiThread(MainActivity.this::startNativeGoogleSignIn);
         }
 
         @JavascriptInterface

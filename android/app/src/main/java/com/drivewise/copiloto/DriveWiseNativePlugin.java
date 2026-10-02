@@ -123,6 +123,28 @@ public class DriveWiseNativePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openAppDetailsSettings(PluginCall call) {
+        if (getActivity() instanceof MainActivity) {
+            MainActivity act = (MainActivity) getActivity();
+            act.runOnUiThread(act::openAppSystemSettings);
+        }
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void nativeGoogleSignIn(PluginCall call) {
+        if (getActivity() instanceof MainActivity) {
+            MainActivity act = (MainActivity) getActivity();
+            act.runOnUiThread(act::startNativeGoogleSignIn);
+        }
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
     public void checkAllPermissions(PluginCall call) {
         Context ctx = getContext();
         boolean overlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx);

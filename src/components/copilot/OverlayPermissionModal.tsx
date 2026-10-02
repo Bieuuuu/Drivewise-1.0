@@ -145,6 +145,32 @@ export const OverlayPermissionModal: React.FC<OverlayPermissionModalProps> = () 
                   </>
                 )}
               </button>
+
+              {/* Android 13 / 14 / 15 Restricted Settings ("Acesso negado ao app") Helper */}
+              {!hasOverlayPermission && (
+                <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-1.5">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>Apareceu "Acesso negado ao app"?</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed mb-2.5">
+                    No <strong>Android 13, 14 e 15</strong>, o sistema bloqueia a chavinha inicialmente com a mensagem <em>"Acesso negado ao app / Configurações restritas"</em>. Desbloqueie em 3 passos:
+                  </p>
+                  <ol className="text-[11px] text-slate-300 space-y-1 list-decimal list-inside mb-3 leading-snug">
+                    <li>Toque no botão abaixo para abrir as <strong>Informações do App</strong>.</li>
+                    <li>No canto superior direito, toque nos <strong>3 pontinhos (⋮)</strong>.</li>
+                    <li>Toque em <strong>"Permitir configurações restritas"</strong> e confirme com sua digital/PIN.</li>
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={() => nativeBridge.openAppDetailsSettings()}
+                    className="w-full py-2 px-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Abrir Informações do App (Desbloquear nos 3 pontinhos ⋮)</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Step 2: GPS & Notifications */}

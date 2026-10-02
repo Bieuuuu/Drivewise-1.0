@@ -43,6 +43,8 @@ import {
 } from '../firebase';
 import {
   signInWithPopup,
+  signInWithCredential,
+  GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -760,10 +762,31 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
       setIsAuthLoading(true);
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        setFirebaseUser(result.user);
-        const cloudRes = await fetchAllFromCloud(result.user.uid);
+      let authUser: FirebaseUser | null = null;
+
+      if (isNativeAndroid()) {
+        const nativeRes = await nativeBridge.nativeGoogleSignIn();
+        if (nativeRes.success && nativeRes.idToken) {
+          const credential = GoogleAuthProvider.credential(nativeRes.idToken);
+          const result = await signInWithCredential(auth, credential);
+          authUser = result.user;
+        } else {
+          setIsAuthLoading(false);
+          return {
+            success: false,
+            error:
+              nativeRes.error ||
+              'Login com o Google não concluído. Você também pode entrar ou se cadastrar com E-mail e Senha no formulário.',
+          };
+        }
+      } else {
+        const result = await signInWithPopup(auth, googleProvider);
+        authUser = result.user;
+      }
+
+      if (authUser) {
+        setFirebaseUser(authUser);
+        const cloudRes = await fetchAllFromCloud(authUser.uid);
         if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
           setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
           setSessions(cloudRes.data.sessions || []);
@@ -773,15 +796,15 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } else {
           const freshUser: UserProfile = {
             ...initialUserProfile,
-            name: result.user.displayName || result.user.email?.split('@')[0] || 'Motorista',
-            email: result.user.email || '',
+            name: authUser.displayName || authUser.email?.split('@')[0] || 'Motorista',
+            email: authUser.email || '',
           };
           setUser(freshUser);
           setSessions([]);
           setExpenses([]);
           setFuelEntries([]);
           setRides([]);
-          await syncAllToCloud(result.user.uid, {
+          await syncAllToCloud(authUser.uid, {
             user: freshUser,
             sessions: [],
             expenses: [],
