@@ -146,16 +146,15 @@ public class DriveWiseNativePlugin extends Plugin {
 
     @PluginMethod
     public void getLastGoogleSignInResult(PluginCall call) {
-        if (getActivity() instanceof MainActivity) {
-            MainActivity act = (MainActivity) getActivity();
-            String raw = act.getLastGoogleSignInResultJsonString();
-            try {
+        try {
+            String raw = MainActivity.getLastGoogleSignInResultJsonString();
+            if (raw != null) {
                 org.json.JSONObject obj = new org.json.JSONObject(raw);
                 JSObject ret = JSObject.fromJSONObject(obj);
                 call.resolve(ret);
                 return;
-            } catch (Exception ignored) {}
-        }
+            }
+        } catch (Exception ignored) {}
         JSObject ret = new JSObject();
         ret.put("hasResult", false);
         call.resolve(ret);
@@ -163,15 +162,7 @@ public class DriveWiseNativePlugin extends Plugin {
 
     @PluginMethod
     public void clearLastGoogleSignInResult(PluginCall call) {
-        if (getActivity() instanceof MainActivity) {
-            MainActivity act = (MainActivity) getActivity();
-            act.runOnUiThread(() -> {
-                try {
-                    act.DriveWiseJsBridge bridge = act.new DriveWiseJsBridge();
-                    bridge.clearLastGoogleSignInResult();
-                } catch (Exception ignored) {}
-            });
-        }
+        MainActivity.clearLastGoogleSignInResult();
         JSObject ret = new JSObject();
         ret.put("success", true);
         call.resolve(ret);

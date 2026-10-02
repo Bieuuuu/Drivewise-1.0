@@ -320,7 +320,12 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {}
     }
 
-    public String getLastGoogleSignInResultJsonString() {
+    public static void clearLastGoogleSignInResult() {
+        lastGoogleSignInResultJson = null;
+        lastGoogleSignInError = null;
+    }
+
+    public static String getLastGoogleSignInResultJsonString() {
         JSONObject obj = new JSONObject();
         try {
             obj.put("hasResult", lastGoogleSignInResultJson != null || lastGoogleSignInError != null);
