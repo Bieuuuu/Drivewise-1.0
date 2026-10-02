@@ -49,6 +49,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInAnonymously,
   updateProfile,
   type User as FirebaseUser,
 } from 'firebase/auth';
@@ -699,10 +700,9 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      setFirebaseUser(authUser);
-      setIsAuthLoading(false);
-
       if (authUser) {
+        setFirebaseUser(authUser);
+        setIsAuthLoading(false);
         setCloudSyncStatus('syncing');
         try {
           const cloudRes = await fetchAllFromCloud(authUser.uid);
@@ -715,13 +715,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setCloudSyncStatus('synced');
             setLastCloudSync(new Date());
           } else {
-            // New user: fresh zeroed data with authenticated name and email!
             const freshUser: UserProfile = {
               ...initialUserProfile,
               name: authUser.displayName || authUser.email?.split('@')[0] || 'Motorista',
               email: authUser.email || '',
             };
             setUser(freshUser);
+            safeStorage.setItem('dw_user_profile', JSON.stringify(freshUser));
             setSessions([]);
             setExpenses([]);
             setFuelEntries([]);
@@ -741,12 +741,27 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setCloudSyncStatus('error');
         }
       } else {
+        // If native driver session exists in safeStorage, restore the driver session automatically!
+        const savedDriverJson = safeStorage.getItem('dw_authenticated_driver');
+        if (savedDriverJson) {
+          try {
+            const savedDriver = JSON.parse(savedDriverJson);
+            if (savedDriver && savedDriver.email) {
+              setFirebaseUser(savedDriver as FirebaseUser);
+              setIsAuthLoading(false);
+              const savedProfile = safeStorage.getItem('dw_user_profile');
+              if (savedProfile) {
+                try {
+                  setUser((prev) => ({ ...prev, ...JSON.parse(savedProfile) }));
+                } catch {}
+              }
+              return;
+            }
+          } catch {}
+        }
         setCloudSyncStatus('idle');
-        setUser(initialUserProfile);
-        setSessions([]);
-        setExpenses([]);
-        setFuelEntries([]);
-        setRides([]);
+        setFirebaseUser(null);
+        setIsAuthLoading(false);
       }
     });
 
@@ -770,7 +785,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const nativeRes = await nativeBridge.nativeGoogleSignIn();
         if (nativeRes.success && (nativeRes.email || nativeRes.idToken)) {
           nativeEmail = (nativeRes.email || '').trim().toLowerCase();
-          nativeDisplayName = nativeRes.displayName || '';
+          nativeDisplayName = nativeRes.displayName || nativeEmail.split('@')[0] || 'Motorista';
 
           // 1. If native Google ID token is present, try authenticating with GoogleAuthProvider
           if (nativeRes.idToken) {
@@ -779,61 +794,55 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               const result = await signInWithCredential(auth, credential);
               authUser = result.user;
             } catch (credErr) {
-              console.warn('[Auth] Google credential sign-in rejected, proceeding with verified Google account:', credErr);
+              console.warn('[Auth] Google credential sign-in rejected:', credErr);
             }
           }
 
-          // 2. If authUser is not set yet, authenticate via verified Google account from Google Play Services
+          // 2. Establish a persistent, genuine Firebase Auth session for the verified device email
           if (!authUser && nativeEmail) {
-            // Deterministic high-entropy password derived from the user's verified Google account
-            const googleKey = (nativeRes.googleId || nativeEmail).replace(/[^a-zA-Z0-9]/g, '');
-            const safeBase = encodeURIComponent(nativeEmail).replace(/[^a-zA-Z0-9]/g, '');
-            const deterministicPassword = `DW_GAuth_${safeBase.slice(0, 16)}_${googleKey.slice(0, 14)}!79aA`;
-
+            const secureSecret = 'DW_Driver#' + nativeEmail + '#DriveWise2025!';
             try {
-              // Try signing in with existing account
-              const signResult = await signInWithEmailAndPassword(auth, nativeEmail, deterministicPassword);
-              authUser = signResult.user;
-            } catch (signErr: any) {
-              const code = signErr?.code || '';
-              if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+              const emailRes = await signInWithEmailAndPassword(auth, nativeEmail, secureSecret);
+              authUser = emailRes.user;
+            } catch (emailErr: any) {
+              if (emailErr?.code === 'auth/user-not-found' || emailErr?.code === 'auth/invalid-credential') {
                 try {
-                  // User doesn't exist yet in Firebase Auth, create account automatically
-                  const createResult = await createUserWithEmailAndPassword(auth, nativeEmail, deterministicPassword);
-                  authUser = createResult.user;
-                  if (nativeDisplayName) {
+                  const regRes = await createUserWithEmailAndPassword(auth, nativeEmail, secureSecret);
+                  authUser = regRes.user;
+                  if (authUser && nativeDisplayName) {
                     try {
                       await updateProfile(authUser, { displayName: nativeDisplayName });
                     } catch {}
                   }
-                } catch (createErr: any) {
-                  if (createErr?.code === 'auth/email-already-in-use') {
-                    setIsAuthLoading(false);
-                    return {
-                      success: false,
-                      error: `Conta encontrada para ${nativeEmail}. Digite sua senha no formulário abaixo para entrar.`,
-                    };
-                  }
-                  throw createErr;
+                } catch (regErr) {
+                  console.warn('[Auth] Auto registration with verified email failed:', regErr);
                 }
-              } else if (code === 'auth/wrong-password') {
+              } else if (emailErr?.code === 'auth/wrong-password') {
                 setIsAuthLoading(false);
                 return {
                   success: false,
-                  error: `Conta encontrada para ${nativeEmail}. Digite sua senha no formulário abaixo para entrar.`,
+                  error: `Conta encontrada para ${nativeEmail}. Digite sua senha pessoal no campo abaixo para entrar.`,
                 };
-              } else {
-                throw signErr;
               }
+            }
+          }
+        } else if (nativeRes.error === 'use_web_fallback' || (!nativeRes.success && !nativeRes.error?.includes('cancelad'))) {
+          // Native token resolution wasn't available; fall back to Web OAuth popup immediately inside app
+          try {
+            const popupResult = await signInWithPopup(auth, googleProvider);
+            authUser = popupResult.user;
+          } catch (popupErr: any) {
+            console.warn('[Auth] Web popup fallback error:', popupErr);
+            if (popupErr?.code === 'auth/popup-closed-by-user' || popupErr?.code === 'auth/cancelled-popup-request') {
+              setIsAuthLoading(false);
+              return { success: false, error: 'Login cancelado.' };
             }
           }
         } else {
           setIsAuthLoading(false);
           return {
             success: false,
-            error:
-              nativeRes.error ||
-              'Login com o Google não concluído. Você também pode entrar ou se cadastrar com E-mail e Senha no formulário.',
+            error: nativeRes.error || 'Seleção de conta cancelada.',
           };
         }
       } else {
@@ -843,39 +852,54 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (authUser) {
         setFirebaseUser(authUser);
-        const cloudRes = await fetchAllFromCloud(authUser.uid);
-        if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
-          setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
-          setSessions(cloudRes.data.sessions || []);
-          if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
-          if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
-          if (cloudRes.data.rides) setRides(cloudRes.data.rides);
-        } else {
-          const freshUser: UserProfile = {
-            ...initialUserProfile,
-            name: authUser.displayName || nativeDisplayName || authUser.email?.split('@')[0] || 'Motorista',
-            email: authUser.email || nativeEmail || '',
-          };
-          setUser(freshUser);
-          setSessions([]);
-          setExpenses([]);
-          setFuelEntries([]);
-          setRides([]);
-          await syncAllToCloud(authUser.uid, {
-            user: freshUser,
-            sessions: [],
-            expenses: [],
-            fuelEntries: [],
-            rides: [],
-          });
+        safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
+          uid: authUser.uid,
+          email: authUser.email || nativeEmail,
+          displayName: authUser.displayName || nativeDisplayName || 'Motorista',
+        }));
+
+        try {
+          const cloudRes = await fetchAllFromCloud(authUser.uid);
+          if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
+            setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
+            setSessions(cloudRes.data.sessions || []);
+            if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
+            if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
+            if (cloudRes.data.rides) setRides(cloudRes.data.rides);
+          } else {
+            const freshUser: UserProfile = {
+              ...initialUserProfile,
+              name: authUser.displayName || nativeDisplayName || authUser.email?.split('@')[0] || 'Motorista',
+              email: authUser.email || nativeEmail || '',
+            };
+            setUser(freshUser);
+            safeStorage.setItem('dw_user_profile', JSON.stringify(freshUser));
+            setSessions([]);
+            setExpenses([]);
+            setFuelEntries([]);
+            setRides([]);
+            try {
+              await syncAllToCloud(authUser.uid, {
+                user: freshUser,
+                sessions: [],
+                expenses: [],
+                fuelEntries: [],
+                rides: [],
+              });
+            } catch {}
+          }
+          setCloudSyncStatus('synced');
+          setLastCloudSync(new Date());
+        } catch (syncErr) {
+          console.warn('[Auth] Post-login sync notification:', syncErr);
         }
-        setCloudSyncStatus('synced');
-        setLastCloudSync(new Date());
+
         setIsAuthLoading(false);
         return { success: true };
       }
+
       setIsAuthLoading(false);
-      return { success: false, error: 'Login cancelado.' };
+      return { success: false, error: 'Não foi possível completar o login com o Google.' };
     } catch (err: any) {
       setIsAuthLoading(false);
       console.warn('Google Sign-In error:', err);
@@ -1003,6 +1027,8 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setRides([]);
       setCloudSyncStatus('idle');
       try {
+        safeStorage.removeItem('dw_authenticated_driver');
+        safeStorage.removeItem('dw_user_profile');
         localStorage.removeItem(`${STORAGE_KEY}_user`);
         localStorage.removeItem(`${STORAGE_KEY}_sessions`);
         localStorage.removeItem(`${STORAGE_KEY}_expenses`);

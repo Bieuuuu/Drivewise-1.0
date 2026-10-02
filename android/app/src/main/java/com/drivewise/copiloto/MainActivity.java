@@ -66,7 +66,6 @@ public class MainActivity extends BridgeActivity {
     public static final int REQ_OVERLAY_PERMISSION = 4202;
     public static final int REQ_SCREEN_CAPTURE_RADAR = 4203;
     public static final int REQ_GOOGLE_SIGN_IN = 4204;
-    public static final int REQ_ACCOUNT_PICKER = 4205;
 
     public static final String GOOGLE_WEB_CLIENT_ID =
         "121704379481-90udicfm1tnpmfi3ecnd0ld5vvqvc0v0.apps.googleusercontent.com";
@@ -279,40 +278,27 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Starts native Google Sign-In with Google Play Services, with automatic fallback
-     * to native Android AccountManager so account selection always succeeds without failing!
+     * Starts native Google Sign-In with Google Play Services.
+     * Shows the official Android account picker bottom sheet with the list of Google accounts on the phone.
      */
     public void startNativeGoogleSignIn() {
         lastGoogleSignInResultJson = null;
         lastGoogleSignInError = null;
         try {
-            GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            GoogleSignInOptions.Builder builder = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
-                .requestProfile()
-                .build();
+                .requestProfile();
+            if (GOOGLE_WEB_CLIENT_ID != null && !GOOGLE_WEB_CLIENT_ID.isEmpty()) {
+                try {
+                    builder.requestIdToken(GOOGLE_WEB_CLIENT_ID);
+                } catch (Exception ignored) {}
+            }
+            GoogleSignInOptions gso = builder.build();
             GoogleSignInClient client = GoogleSignIn.getClient(this, gso);
-            client.signOut();
             Intent signInIntent = client.getSignInIntent();
             startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
         } catch (Exception e) {
-            launchSystemAccountPicker();
-        }
-    }
-
-    public void launchSystemAccountPicker() {
-        try {
-            Intent intent = AccountManager.newChooseAccountIntent(
-                null,
-                null,
-                new String[] { "com.google" },
-                null,
-                null,
-                null,
-                null
-            );
-            startActivityForResult(intent, REQ_ACCOUNT_PICKER);
-        } catch (Exception e) {
-            dispatchNativeGoogleSignInResult(null, "Não foi possível abrir o seletor de contas: " + e.getMessage());
+            dispatchNativeGoogleSignInResult(null, "use_web_fallback");
         }
     }
 
@@ -664,60 +650,51 @@ public class MainActivity extends BridgeActivity {
             }
             notifyWebViewPermissionsUpdated();
         } else if (requestCode == REQ_GOOGLE_SIGN_IN) {
+            if (resultCode == Activity.RESULT_CANCELED && data == null) {
+                dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
+                return;
+            }
+
+            GoogleSignInAccount account = null;
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
-                GoogleSignInAccount account = task.getResult(ApiException.class);
-                if (account != null && account.getEmail() != null && !account.getEmail().trim().isEmpty()) {
-                    String idToken = account.getIdToken();
-                    String email = account.getEmail().trim();
-                    String displayName = account.getDisplayName() != null ? account.getDisplayName() : "";
-                    String googleId = account.getId() != null ? account.getId() : "";
-                    String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
-                    try {
-                        JSONObject res = new JSONObject();
-                        res.put("idToken", idToken != null ? idToken : "");
-                        res.put("email", email);
-                        res.put("displayName", displayName);
-                        res.put("googleId", googleId);
-                        res.put("photoUrl", photoUrl);
-                        dispatchNativeGoogleSignInResult(res.toString(), null);
-                    } catch (JSONException je) {
-                        dispatchNativeGoogleSignInResult(null, "Erro ao processar dados da conta: " + je.getMessage());
-                    }
-                } else {
-                    launchSystemAccountPicker();
-                }
-            } catch (ApiException e) {
-                int code = e.getStatusCode();
-                if (code == 12501 || code == 12502) {
-                    dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
-                } else {
-                    // Fall back automatically to native system account picker
-                    launchSystemAccountPicker();
-                }
+                account = task.getResult(ApiException.class);
             } catch (Exception e) {
-                launchSystemAccountPicker();
-            }
-        } else if (requestCode == REQ_ACCOUNT_PICKER) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                String accountName = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
-                if (accountName != null && !accountName.trim().isEmpty()) {
+                if (data != null) {
                     try {
-                        JSONObject res = new JSONObject();
-                        res.put("idToken", "");
-                        res.put("email", accountName.trim());
-                        res.put("displayName", accountName.split("@")[0]);
-                        res.put("googleId", accountName.trim());
-                        res.put("photoUrl", "");
-                        dispatchNativeGoogleSignInResult(res.toString(), null);
-                    } catch (Exception ignored) {
-                        dispatchNativeGoogleSignInResult(null, "Erro ao processar conta selecionada.");
-                    }
-                } else {
-                    dispatchNativeGoogleSignInResult(null, "Nenhuma conta selecionada.");
+                        account = data.getParcelableExtra("googleSignInAccount");
+                    } catch (Throwable ignored) {}
+                }
+                if (account == null) {
+                    try {
+                        account = GoogleSignIn.getLastSignedInAccount(this);
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            if (account != null && account.getEmail() != null && !account.getEmail().trim().isEmpty()) {
+                String idToken = account.getIdToken();
+                String email = account.getEmail().trim();
+                String displayName = account.getDisplayName() != null ? account.getDisplayName() : "";
+                String googleId = account.getId() != null ? account.getId() : "";
+                String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
+                try {
+                    JSONObject res = new JSONObject();
+                    res.put("idToken", idToken != null ? idToken : "");
+                    res.put("email", email);
+                    res.put("displayName", displayName);
+                    res.put("googleId", googleId);
+                    res.put("photoUrl", photoUrl);
+                    dispatchNativeGoogleSignInResult(res.toString(), null);
+                } catch (JSONException je) {
+                    dispatchNativeGoogleSignInResult(null, "Erro ao processar dados da conta: " + je.getMessage());
                 }
             } else {
-                dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
+                if (resultCode == Activity.RESULT_OK) {
+                    dispatchNativeGoogleSignInResult(null, "use_web_fallback");
+                } else {
+                    dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
+                }
             }
         }
     }
@@ -878,12 +855,6 @@ public class MainActivity extends BridgeActivity {
     }
 
     private String buildCleanChromeUserAgent(String originalUa) {
-        if (originalUa == null || originalUa.isEmpty()) {
-            return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
-        }
-        return originalUa
-            .replace("; wv)", ")")
-            .replace("; wv", "")
-            .replace("Version/4.0 ", "");
+        return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36";
     }
 }
