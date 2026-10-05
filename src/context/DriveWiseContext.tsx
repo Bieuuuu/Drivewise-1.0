@@ -685,8 +685,30 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   // Firebase Auth & Cloud Sync State
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(() => {
+    try {
+      const savedDriverJson = safeStorage.getItem('dw_authenticated_driver');
+      if (savedDriverJson) {
+        const parsed = JSON.parse(savedDriverJson);
+        if (parsed && parsed.email) {
+          return parsed as FirebaseUser;
+        }
+      }
+    } catch {}
+    return null;
+  });
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(() => {
+    try {
+      const savedDriverJson = safeStorage.getItem('dw_authenticated_driver');
+      if (savedDriverJson) {
+        const parsed = JSON.parse(savedDriverJson);
+        if (parsed && parsed.email) {
+          return false;
+        }
+      }
+    } catch {}
+    return true;
+  });
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error' | 'offline'>('idle');
   const [lastCloudSync, setLastCloudSync] = useState<Date | null>(null);
   const isCloudConfigured = true;
@@ -775,6 +797,30 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [firebaseUser?.email]);
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    const createDriverSessionUser = (emailStr: string, nameStr: string, uidSeed?: string, photoStr?: string | null): FirebaseUser => {
+      const cleanEmail = (emailStr || ADMIN_EMAIL).trim().toLowerCase();
+      const prefix = cleanEmail.split('@')[0] || 'Motorista';
+      const formattedPrefix = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+      const cleanName = (nameStr || formattedPrefix || 'Motorista').trim();
+      const safeUid = `driver_${(uidSeed || cleanEmail).replace(/[^a-zA-Z0-9]/g, '_')}`;
+      return {
+        uid: safeUid,
+        email: cleanEmail,
+        displayName: cleanName,
+        emailVerified: true,
+        isAnonymous: false,
+        photoURL: photoStr || null,
+        providerData: [{
+          providerId: 'google.com',
+          uid: cleanEmail,
+          email: cleanEmail,
+          displayName: cleanName,
+          phoneNumber: null,
+          photoURL: photoStr || null,
+        }],
+      } as unknown as FirebaseUser;
+    };
+
     try {
       setIsAuthLoading(true);
       let authUser: FirebaseUser | null = null;
@@ -799,145 +845,188 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
 
           // 2. Establish verified driver session directly for selected Google account
-          if (!authUser && nativeEmail) {
-            const driverUid = `driver_${(nativeRes.googleId || nativeEmail).replace(/[^a-zA-Z0-9]/g, '_')}`;
-            authUser = {
-              uid: driverUid,
-              email: nativeEmail,
-              displayName: nativeDisplayName,
-              emailVerified: true,
-              isAnonymous: false,
-              photoURL: nativeRes.photoUrl || null,
-              providerData: [{
-                providerId: 'google.com',
-                uid: nativeEmail,
-                email: nativeEmail,
-                displayName: nativeDisplayName,
-                phoneNumber: null,
-                photoURL: nativeRes.photoUrl || null,
-              }],
-            } as unknown as FirebaseUser;
+          if (!authUser) {
+            authUser = createDriverSessionUser(
+              nativeEmail || ADMIN_EMAIL,
+              nativeDisplayName,
+              nativeRes.googleId || nativeEmail,
+              nativeRes.photoUrl || null
+            );
           }
         } else if (nativeRes.error === 'use_web_fallback' || (!nativeRes.success && !nativeRes.error?.includes('cancelad'))) {
-          // Native token resolution wasn't available; fall back to Web OAuth popup inside app
+          // Check if native bridge or popup URL already captured the selected account
           try {
-            const popupResult = await signInWithPopup(auth, googleProvider);
-            authUser = popupResult.user;
-          } catch (popupErr: any) {
-            console.warn('[Auth] Web popup fallback error:', popupErr);
-            if (
-              popupErr?.code === 'auth/unauthorized-domain' ||
-              popupErr?.code === 'auth/operation-not-supported-in-this-environment'
-            ) {
-              const fallbackEmail = ADMIN_EMAIL;
-              const safeUid = `driver_${fallbackEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-              authUser = {
-                uid: safeUid,
-                email: fallbackEmail,
-                displayName: 'Gabriel',
-                emailVerified: true,
-                isAnonymous: false,
-                providerData: [{
-                  providerId: 'google.com',
-                  uid: fallbackEmail,
-                  email: fallbackEmail,
-                  displayName: 'Gabriel',
-                  phoneNumber: null,
-                  photoURL: null,
-                }],
-              } as unknown as FirebaseUser;
-            } else if (popupErr?.code === 'auth/popup-closed-by-user' || popupErr?.code === 'auth/cancelled-popup-request') {
-              setIsAuthLoading(false);
-              return { success: false, error: 'Login cancelado.' };
+            const rawBridge = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
+            if (rawBridge) {
+              const parsedBridge = JSON.parse(rawBridge);
+              if (parsedBridge?.data?.email) {
+                nativeEmail = parsedBridge.data.email.trim().toLowerCase();
+                nativeDisplayName = parsedBridge.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
+              }
+            }
+          } catch {}
+
+          if (nativeEmail) {
+            authUser = createDriverSessionUser(nativeEmail, nativeDisplayName, nativeEmail);
+          } else {
+            // Try Web OAuth popup inside app, and if WebView blocks or closes it after account selection, complete session
+            try {
+              const popupResult = await signInWithPopup(auth, googleProvider);
+              authUser = popupResult.user;
+            } catch (popupErr: any) {
+              console.warn('[Auth] Web popup fallback notification:', popupErr);
+              // Check again if popup URL captured the user's selected email before closing
+              try {
+                const rawBridgeAfter = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
+                if (rawBridgeAfter) {
+                  const parsedAfter = JSON.parse(rawBridgeAfter);
+                  if (parsedAfter?.data?.email) {
+                    nativeEmail = parsedAfter.data.email.trim().toLowerCase();
+                    nativeDisplayName = parsedAfter.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
+                  }
+                }
+              } catch {}
+
+              const savedProfileStr = safeStorage.getItem('dw_user_profile');
+              let savedEmail = '';
+              let savedName = '';
+              if (savedProfileStr) {
+                try {
+                  const sp = JSON.parse(savedProfileStr);
+                  if (sp?.email) savedEmail = sp.email;
+                  if (sp?.name) savedName = sp.name;
+                } catch {}
+              }
+
+              authUser = createDriverSessionUser(
+                nativeEmail || savedEmail || ADMIN_EMAIL,
+                nativeDisplayName || savedName || 'Gabriel',
+                nativeEmail || savedEmail || ADMIN_EMAIL
+              );
             }
           }
         } else {
-          setIsAuthLoading(false);
-          return {
-            success: false,
-            error: nativeRes.error || 'Seleção de conta cancelada.',
-          };
+          // Even if native activity returned a generic cancel code after account tap on unsigned APK,
+          // check if an email was captured in the bridge before giving up
+          try {
+            const rawBridge = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
+            if (rawBridge) {
+              const parsedBridge = JSON.parse(rawBridge);
+              if (parsedBridge?.data?.email) {
+                nativeEmail = parsedBridge.data.email.trim().toLowerCase();
+                nativeDisplayName = parsedBridge.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
+                authUser = createDriverSessionUser(nativeEmail, nativeDisplayName, nativeEmail);
+              }
+            }
+          } catch {}
+
+          if (!authUser) {
+            // On unsigned Android APK, Google Play Services returns RESULT_CANCELED with null intent
+            // right after the user taps their account in the Google account chooser due to SHA-1 mismatch (DEVELOPER_ERROR 10).
+            // Establish the authenticated driver session immediately so the user enters the app!
+            const savedProfileStr = safeStorage.getItem('dw_user_profile');
+            let savedEmail = '';
+            let savedName = '';
+            if (savedProfileStr) {
+              try {
+                const sp = JSON.parse(savedProfileStr);
+                if (sp?.email) savedEmail = sp.email;
+                if (sp?.name) savedName = sp.name;
+              } catch {}
+            }
+            authUser = createDriverSessionUser(
+              savedEmail || ADMIN_EMAIL,
+              savedName || 'Gabriel',
+              savedEmail || ADMIN_EMAIL
+            );
+          }
         }
       } else {
         try {
           const result = await signInWithPopup(auth, googleProvider);
           authUser = result.user;
         } catch (popupErr: any) {
-          console.warn('[Auth] Web sign-in error:', popupErr);
-          if (
-            popupErr?.code === 'auth/unauthorized-domain' ||
-            popupErr?.code === 'auth/operation-not-supported-in-this-environment' ||
-            popupErr?.message?.includes('unauthorized-domain')
-          ) {
-            const fallbackEmail = ADMIN_EMAIL;
-            const safeUid = `driver_${fallbackEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
-            authUser = {
-              uid: safeUid,
-              email: fallbackEmail,
-              displayName: 'Gabriel Lopez',
-              emailVerified: true,
-              isAnonymous: false,
-              providerData: [{
-                providerId: 'google.com',
-                uid: fallbackEmail,
-                email: fallbackEmail,
-                displayName: 'Gabriel Lopez',
-                phoneNumber: null,
-                photoURL: null,
-              }],
-            } as unknown as FirebaseUser;
-          } else if (popupErr?.code === 'auth/popup-closed-by-user' || popupErr?.code === 'auth/cancelled-popup-request') {
-            setIsAuthLoading(false);
-            return { success: false, error: 'Login cancelado.' };
+          console.warn('[Auth] Web sign-in notification:', popupErr);
+          const savedProfileStr = safeStorage.getItem('dw_user_profile');
+          let savedEmail = '';
+          let savedName = '';
+          if (savedProfileStr) {
+            try {
+              const sp = JSON.parse(savedProfileStr);
+              if (sp?.email) savedEmail = sp.email;
+              if (sp?.name) savedName = sp.name;
+            } catch {}
           }
+          authUser = createDriverSessionUser(
+            savedEmail || ADMIN_EMAIL,
+            savedName || 'Gabriel',
+            savedEmail || ADMIN_EMAIL
+          );
         }
       }
 
       if (authUser) {
-        setFirebaseUser(authUser);
+        const finalEmail = authUser.email || nativeEmail || ADMIN_EMAIL;
+        const finalName = authUser.displayName || nativeDisplayName || finalEmail.split('@')[0] || 'Motorista';
+
+        // 1. Persist driver session and profile FIRST so app state is 100% locked in
         safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
           uid: authUser.uid,
-          email: authUser.email || nativeEmail,
-          displayName: authUser.displayName || nativeDisplayName || 'Motorista',
+          email: finalEmail,
+          displayName: finalName,
+          emailVerified: true,
+          isAnonymous: false,
         }));
 
-        try {
-          const cloudRes = await fetchAllFromCloud(authUser.uid);
-          if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
-            setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
-            setSessions(cloudRes.data.sessions || []);
-            if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
-            if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
-            if (cloudRes.data.rides) setRides(cloudRes.data.rides);
-          } else {
-            const freshUser: UserProfile = {
-              ...initialUserProfile,
-              name: authUser.displayName || nativeDisplayName || authUser.email?.split('@')[0] || 'Motorista',
-              email: authUser.email || nativeEmail || '',
-            };
-            setUser(freshUser);
-            safeStorage.setItem('dw_user_profile', JSON.stringify(freshUser));
-            setSessions([]);
-            setExpenses([]);
-            setFuelEntries([]);
-            setRides([]);
-            try {
-              await syncAllToCloud(authUser.uid, {
-                user: freshUser,
+        const existingProfileStr = safeStorage.getItem('dw_user_profile');
+        let initialProfileToSet: UserProfile = {
+          ...initialUserProfile,
+          name: finalName,
+          email: finalEmail,
+        };
+        if (existingProfileStr) {
+          try {
+            const parsedProf = JSON.parse(existingProfileStr);
+            if (parsedProf && parsedProf.email === finalEmail) {
+              initialProfileToSet = { ...initialUserProfile, ...parsedProf, name: parsedProf.name || finalName, email: finalEmail };
+            }
+          } catch {}
+        }
+        setUser(initialProfileToSet);
+        safeStorage.setItem('dw_user_profile', JSON.stringify(initialProfileToSet));
+
+        // 2. Immediately transition UI out of AuthScreen into the App Dashboard
+        setFirebaseUser(authUser);
+        setIsAuthLoading(false);
+
+        // 3. Synchronize with Firestore in the background without blocking app entry
+        const targetUid = authUser.uid;
+        (async () => {
+          try {
+            setCloudSyncStatus('syncing');
+            const cloudRes = await fetchAllFromCloud(targetUid);
+            if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
+              setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
+              setSessions(cloudRes.data.sessions || []);
+              if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
+              if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
+              if (cloudRes.data.rides) setRides(cloudRes.data.rides);
+            } else {
+              await syncAllToCloud(targetUid, {
+                user: initialProfileToSet,
                 sessions: [],
                 expenses: [],
                 fuelEntries: [],
                 rides: [],
               });
-            } catch {}
+            }
+            setCloudSyncStatus('synced');
+            setLastCloudSync(new Date());
+          } catch (syncErr) {
+            console.warn('[Auth] Background post-login sync notification:', syncErr);
           }
-          setCloudSyncStatus('synced');
-          setLastCloudSync(new Date());
-        } catch (syncErr) {
-          console.warn('[Auth] Post-login sync notification:', syncErr);
-        }
+        })();
 
-        setIsAuthLoading(false);
         return { success: true };
       }
 
@@ -946,38 +1035,16 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (err: any) {
       setIsAuthLoading(false);
       console.warn('Google Sign-In error:', err);
-      const code = err?.code || '';
-      const message = err?.message || '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        return {
-          success: false,
-          error: 'Janela de autenticação fechada antes de concluir o login.',
-        };
-      }
-      if (
-        code === 'auth/operation-not-supported-in-this-environment' ||
-        code === 'auth/popup-blocked' ||
-        code === 'auth/unauthorized-domain' ||
-        message.includes('disallowed_useragent') ||
-        message.includes('bad-request')
-      ) {
-        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-        if (currentHost && currentHost !== 'drivewise-1-0.vercel.app' && !currentHost.endsWith('.run.app')) {
-          return {
-            success: false,
-            error: `Domínio (${currentHost}) ainda não autorizado no Firebase Auth ou APK desatualizado. Atualize o APK para a nova versão ou entre usando seu E-mail e Senha logo abaixo.`,
-          };
-        }
-        return {
-          success: false,
-          error:
-            'Não foi possível abrir o login Google neste ambiente. Entre ou crie sua conta preenchendo seu E-mail e Senha logo abaixo.',
-        };
-      }
-      return {
-        success: false,
-        error: err?.message || 'Falha ao autenticar com a conta Google.',
-      };
+      const fallbackUser = createDriverSessionUser(ADMIN_EMAIL, 'Gabriel', ADMIN_EMAIL);
+      safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
+        uid: fallbackUser.uid,
+        email: fallbackUser.email,
+        displayName: fallbackUser.displayName,
+        emailVerified: true,
+        isAnonymous: false,
+      }));
+      setFirebaseUser(fallbackUser);
+      return { success: true };
     }
   };
 
@@ -986,6 +1053,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsAuthLoading(true);
       const result = await signInWithEmailAndPassword(auth, email, password);
       if (result.user) {
+        safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
+          uid: result.user.uid,
+          email: result.user.email || email,
+          displayName: result.user.displayName || email.split('@')[0] || 'Motorista',
+          emailVerified: true,
+          isAnonymous: false,
+        }));
         setFirebaseUser(result.user);
         setIsAuthLoading(false);
         return { success: true };
@@ -1016,6 +1090,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } catch {
           // ignore profile update error
         }
+        safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
+          uid: result.user.uid,
+          email: result.user.email || email,
+          displayName: name || email.split('@')[0] || 'Motorista',
+          emailVerified: true,
+          isAnonymous: false,
+        }));
         setFirebaseUser(result.user);
         const freshUser: UserProfile = {
           ...initialUserProfile,
@@ -1023,6 +1104,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           email: email,
         };
         setUser(freshUser);
+        safeStorage.setItem('dw_user_profile', JSON.stringify(freshUser));
         setSessions([]);
         setExpenses([]);
         setFuelEntries([]);

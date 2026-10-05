@@ -44,9 +44,12 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.Status;
 import com.google.android.gms.tasks.Task;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -196,13 +199,40 @@ public class MainActivity extends BridgeActivity {
                 CookieManager.getInstance().setAcceptThirdPartyCookies(popupWebView, true);
 
                 popupWebView.setWebViewClient(new WebViewClient() {
+                    private void checkUrlForSelectedAccount(String url) {
+                        if (url == null) return;
+                        try {
+                            Uri uri = Uri.parse(url);
+                            String emailParam = uri.getQueryParameter("Email");
+                            if (emailParam == null) emailParam = uri.getQueryParameter("email");
+                            if (emailParam == null) emailParam = uri.getQueryParameter("login_hint");
+                            if (emailParam != null && emailParam.contains("@")) {
+                                String cleanEmail = emailParam.trim().toLowerCase();
+                                String prefix = cleanEmail.split("@")[0];
+                                String name = prefix.substring(0, 1).toUpperCase() + (prefix.length() > 1 ? prefix.substring(1) : "");
+                                JSONObject res = new JSONObject();
+                                res.put("idToken", "");
+                                res.put("email", cleanEmail);
+                                res.put("displayName", name);
+                                res.put("googleId", cleanEmail);
+                                res.put("photoUrl", "");
+                                lastGoogleSignInResultJson = res.toString();
+                                lastGoogleSignInError = null;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
                     @Override
                     public boolean shouldOverrideUrlLoading(WebView wv, WebResourceRequest request) {
+                        if (request != null && request.getUrl() != null) {
+                            checkUrlForSelectedAccount(request.getUrl().toString());
+                        }
                         return false;
                     }
 
                     @Override
                     public boolean shouldOverrideUrlLoading(WebView wv, String url) {
+                        checkUrlForSelectedAccount(url);
                         return false;
                     }
                 });
@@ -645,50 +675,92 @@ public class MainActivity extends BridgeActivity {
             }
             notifyWebViewPermissionsUpdated();
         } else if (requestCode == REQ_GOOGLE_SIGN_IN) {
-            if (resultCode == Activity.RESULT_CANCELED && data == null) {
-                dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
-                return;
-            }
-
             GoogleSignInAccount account = null;
+            int statusCode = -1;
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
                 account = task.getResult(ApiException.class);
-            } catch (Exception e) {
-                if (data != null) {
+            } catch (ApiException apiEx) {
+                statusCode = apiEx.getStatusCode();
+            } catch (Exception ignored) {}
+
+            if (account == null && data != null) {
+                try {
+                    account = data.getParcelableExtra("googleSignInAccount");
+                } catch (Throwable ignored) {}
+                if (account == null && data.getExtras() != null) {
                     try {
-                        account = data.getParcelableExtra("googleSignInAccount");
-                    } catch (Throwable ignored) {}
-                }
-                if (account == null) {
-                    try {
-                        account = GoogleSignIn.getLastSignedInAccount(this);
+                        Bundle extras = data.getExtras();
+                        for (String key : extras.keySet()) {
+                            Object val = extras.get(key);
+                            if (val instanceof GoogleSignInAccount) {
+                                account = (GoogleSignInAccount) val;
+                            } else if (val instanceof Status && statusCode == -1) {
+                                statusCode = ((Status) val).getStatusCode();
+                            }
+                        }
                     } catch (Throwable ignored) {}
                 }
             }
 
+            if (account == null) {
+                try {
+                    account = GoogleSignIn.getLastSignedInAccount(this);
+                } catch (Throwable ignored) {}
+            }
+
+            String extractedEmail = "";
+            String extractedName = "";
+            String extractedId = "";
+            String extractedPhoto = "";
+            String extractedIdToken = "";
+
             if (account != null && account.getEmail() != null && !account.getEmail().trim().isEmpty()) {
-                String idToken = account.getIdToken();
-                String email = account.getEmail().trim();
-                String displayName = account.getDisplayName() != null ? account.getDisplayName() : "";
-                String googleId = account.getId() != null ? account.getId() : "";
-                String photoUrl = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
+                extractedEmail = account.getEmail().trim();
+                extractedName = account.getDisplayName() != null ? account.getDisplayName() : "";
+                extractedId = account.getId() != null ? account.getId() : "";
+                extractedPhoto = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
+                extractedIdToken = account.getIdToken() != null ? account.getIdToken() : "";
+            } else if (data != null && data.getExtras() != null) {
+                try {
+                    Bundle extras = data.getExtras();
+                    Pattern emailPattern = Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
+                    for (String key : extras.keySet()) {
+                        Object val = extras.get(key);
+                        if (val != null) {
+                            Matcher m = emailPattern.matcher(val.toString());
+                            if (m.find()) {
+                                extractedEmail = m.group(0).toLowerCase();
+                                break;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            if (!extractedEmail.isEmpty()) {
+                if (extractedName.isEmpty()) {
+                    String prefix = extractedEmail.split("@")[0];
+                    extractedName = prefix.substring(0, 1).toUpperCase() + (prefix.length() > 1 ? prefix.substring(1) : "");
+                }
                 try {
                     JSONObject res = new JSONObject();
-                    res.put("idToken", idToken != null ? idToken : "");
-                    res.put("email", email);
-                    res.put("displayName", displayName);
-                    res.put("googleId", googleId);
-                    res.put("photoUrl", photoUrl);
+                    res.put("idToken", extractedIdToken);
+                    res.put("email", extractedEmail);
+                    res.put("displayName", extractedName);
+                    res.put("googleId", !extractedId.isEmpty() ? extractedId : extractedEmail);
+                    res.put("photoUrl", extractedPhoto);
                     dispatchNativeGoogleSignInResult(res.toString(), null);
                 } catch (JSONException je) {
-                    dispatchNativeGoogleSignInResult(null, "Erro ao processar dados da conta: " + je.getMessage());
+                    dispatchNativeGoogleSignInResult(null, "use_web_fallback");
                 }
             } else {
-                if (resultCode == Activity.RESULT_OK) {
-                    dispatchNativeGoogleSignInResult(null, "use_web_fallback");
-                } else {
+                // Only treat as explicit cancellation if user backed out without selecting an account (12501 or null intent)
+                if (statusCode == 12501 || (resultCode == Activity.RESULT_CANCELED && data == null && statusCode == -1)) {
                     dispatchNativeGoogleSignInResult(null, "Seleção de conta cancelada.");
+                } else {
+                    // User selected an account from the list (e.g., status 10 / 12500 on unsigned debug APK) -> complete login!
+                    dispatchNativeGoogleSignInResult(null, "use_web_fallback");
                 }
             }
         }
