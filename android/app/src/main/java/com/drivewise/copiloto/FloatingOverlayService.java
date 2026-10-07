@@ -57,6 +57,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -154,11 +156,12 @@ public class FloatingOverlayService extends Service {
 
     // Auto-Radar OCR (MediaProjection + ML Kit TextRecognizer)
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService ocrExecutor = Executors.newSingleThreadExecutor();
     private MediaProjection mediaProjection;
     private VirtualDisplay virtualDisplay;
     private ImageReader imageReader;
     private TextRecognizer textRecognizer;
-    private boolean isOcrScanInProgress = false;
+    private volatile boolean isOcrScanInProgress = false;
     private String lastDetectedOfferSignature = "";
     private long lastDetectedOfferTimestamp = 0L;
     private static final long AUTO_SCAN_INTERVAL_MS = 1900L;
@@ -561,8 +564,9 @@ public class FloatingOverlayService extends Service {
     }
 
     /**
-     * Captures the current screen frame via MediaProjection ImageReader and runs
-     * Google ML Kit On-Device Text Recognition to extract Uber / 99 / InDrive ride offers.
+     * Captures the current screen frame via MediaProjection ImageReader on a background
+     * ExecutorService thread (preventing UI ANR) and runs Google ML Kit On-Device Text Recognition
+     * to extract Uber / 99 / InDrive ride offers.
      */
     private void captureAndAnalyzeScreenFrame(final boolean manualTrigger) {
         if (isOcrScanInProgress || imageReader == null || textRecognizer == null) {
@@ -579,75 +583,96 @@ public class FloatingOverlayService extends Service {
         }
 
         mainHandler.postDelayed(() -> {
-            Bitmap capturedBitmap = null;
-            Image image = null;
             try {
-                image = imageReader != null ? imageReader.acquireLatestImage() : null;
-                if (image != null) {
-                    Image.Plane[] planes = image.getPlanes();
-                    if (planes != null && planes.length > 0) {
-                        ByteBuffer buffer = planes[0].getBuffer();
-                        int pixelStride = planes[0].getPixelStride();
-                        int rowStride = planes[0].getRowStride();
-                        int rowPadding = rowStride - pixelStride * image.getWidth();
+                ocrExecutor.execute(() -> {
+                    Bitmap capturedBitmap = null;
+                    Image image = null;
+                    try {
+                        image = imageReader != null ? imageReader.acquireLatestImage() : null;
+                        if (image != null) {
+                            Image.Plane[] planes = image.getPlanes();
+                            if (planes != null && planes.length > 0) {
+                                ByteBuffer buffer = planes[0].getBuffer();
+                                int pixelStride = planes[0].getPixelStride();
+                                int rowStride = planes[0].getRowStride();
+                                int rowPadding = rowStride - pixelStride * image.getWidth();
 
-                        Bitmap fullBmp = Bitmap.createBitmap(
-                            image.getWidth() + rowPadding / pixelStride,
-                            image.getHeight(),
-                            Bitmap.Config.ARGB_8888
-                        );
-                        fullBmp.copyPixelsFromBuffer(buffer);
+                                Bitmap fullBmp = Bitmap.createBitmap(
+                                    image.getWidth() + rowPadding / pixelStride,
+                                    image.getHeight(),
+                                    Bitmap.Config.ARGB_8888
+                                );
+                                fullBmp.copyPixelsFromBuffer(buffer);
 
-                        // Crop out top status bar (top 6%) to focus on the app & offer card
-                        int cropY = Math.max(0, (int) (image.getHeight() * 0.06f));
-                        int cropH = Math.max(100, image.getHeight() - cropY);
-                        capturedBitmap = Bitmap.createBitmap(
-                            fullBmp,
-                            0,
-                            cropY,
-                            image.getWidth(),
-                            cropH
-                        );
-                        if (fullBmp != capturedBitmap) {
-                            fullBmp.recycle();
+                                // Crop out top status bar (top 6%) to focus on the app & offer card
+                                int cropY = Math.max(0, (int) (image.getHeight() * 0.06f));
+                                int cropH = Math.max(100, image.getHeight() - cropY);
+                                capturedBitmap = Bitmap.createBitmap(
+                                    fullBmp,
+                                    0,
+                                    cropY,
+                                    image.getWidth(),
+                                    cropH
+                                );
+                                if (fullBmp != capturedBitmap) {
+                                    fullBmp.recycle();
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        if (image != null) {
+                            try {
+                                image.close();
+                            } catch (Exception ignored) {}
+                        }
+                        if (manualTrigger) {
+                            mainHandler.post(() -> {
+                                if (rootContainer != null) {
+                                    rootContainer.setAlpha(1.0f);
+                                }
+                            });
                         }
                     }
-                }
-            } catch (Exception ignored) {
-            } finally {
-                if (image != null) {
+
+                    if (capturedBitmap == null) {
+                        isOcrScanInProgress = false;
+                        return;
+                    }
+
+                    final Bitmap finalBitmap = capturedBitmap;
                     try {
-                        image.close();
-                    } catch (Exception ignored) {}
-                }
+                        InputImage inputImage = InputImage.fromBitmap(finalBitmap, 0);
+                        textRecognizer.process(inputImage)
+                            .addOnSuccessListener(visionText -> {
+                                mainHandler.post(() -> {
+                                    try {
+                                        parseScreenTextForRideOffer(visionText, manualTrigger, wasExpanded);
+                                    } finally {
+                                        if (!finalBitmap.isRecycled()) {
+                                            finalBitmap.recycle();
+                                        }
+                                        isOcrScanInProgress = false;
+                                    }
+                                });
+                            })
+                            .addOnFailureListener(e -> {
+                                if (!finalBitmap.isRecycled()) {
+                                    finalBitmap.recycle();
+                                }
+                                isOcrScanInProgress = false;
+                            });
+                    } catch (Exception e) {
+                        if (!finalBitmap.isRecycled()) {
+                            finalBitmap.recycle();
+                        }
+                        isOcrScanInProgress = false;
+                    }
+                });
+            } catch (Exception e) {
                 if (manualTrigger && rootContainer != null) {
                     rootContainer.setAlpha(1.0f);
                 }
-            }
-
-            if (capturedBitmap == null) {
-                isOcrScanInProgress = false;
-                return;
-            }
-
-            final Bitmap finalBitmap = capturedBitmap;
-            try {
-                InputImage inputImage = InputImage.fromBitmap(finalBitmap, 0);
-                textRecognizer.process(inputImage)
-                    .addOnSuccessListener(visionText -> {
-                        try {
-                            parseScreenTextForRideOffer(visionText, manualTrigger, wasExpanded);
-                        } finally {
-                            finalBitmap.recycle();
-                            isOcrScanInProgress = false;
-                        }
-                    })
-                    .addOnFailureListener(e -> {
-                        finalBitmap.recycle();
-                        isOcrScanInProgress = false;
-                    });
-            } catch (Exception e) {
-                finalBitmap.recycle();
                 isOcrScanInProgress = false;
             }
         }, manualTrigger ? 95L : 10L);
@@ -1864,6 +1889,9 @@ public class FloatingOverlayService extends Service {
         isRunning = false;
         stopAutoRadarProjection();
         stopBackgroundGpsTracking();
+        try {
+            ocrExecutor.shutdownNow();
+        } catch (Exception ignored) {}
         if (textRecognizer != null) {
             try {
                 textRecognizer.close();

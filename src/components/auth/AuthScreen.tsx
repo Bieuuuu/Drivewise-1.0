@@ -14,9 +14,15 @@ import {
 
 interface AuthScreenProps {
   onSuccess?: () => void;
+  onEnterPreview?: () => void;
+  onOpenLanding?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({
+  onSuccess,
+  onEnterPreview,
+  onOpenLanding,
+}) => {
   const {
     loginWithGoogle,
     loginWithEmailPassword,
@@ -325,6 +331,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
               )}
             </button>
           </form>
+
+          {onEnterPreview && (
+            <div className="mt-4 pt-4 border-t border-white/[0.06] flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={onEnterPreview}
+                className="w-full py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Entrar Direto no Painel (Modo Prévia)</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              {onOpenLanding && (
+                <button
+                  type="button"
+                  onClick={onOpenLanding}
+                  className="w-full py-1.5 text-[11px] font-medium text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                >
+                  Ver Landing Page de Apresentação
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </motion.div>
     </div>

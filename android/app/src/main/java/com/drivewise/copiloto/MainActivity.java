@@ -4,6 +4,7 @@ import android.Manifest;
 import android.accounts.AccountManager;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -69,6 +70,8 @@ public class MainActivity extends BridgeActivity {
     public static final int REQ_OVERLAY_PERMISSION = 4202;
     public static final int REQ_SCREEN_CAPTURE_RADAR = 4203;
     public static final int REQ_GOOGLE_SIGN_IN = 4204;
+    public static final int REQ_APP_DETAILS_SETTINGS = 4205;
+    public static final int REQ_ACCOUNT_PICKER_FALLBACK = 4206;
 
     public static final String GOOGLE_WEB_CLIENT_ID =
         "121704379481-90udicfm1tnpmfi3ecnd0ld5vvqvc0v0.apps.googleusercontent.com";
@@ -309,21 +312,50 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * Starts native Google Sign-In with Google Play Services.
-     * Shows the official Android account picker bottom sheet with the list of Google accounts on the phone.
+     * Requests ID Token for Firebase Auth and shows the official Android account picker bottom sheet.
      */
     public void startNativeGoogleSignIn() {
         lastGoogleSignInResultJson = null;
         lastGoogleSignInError = null;
         try {
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(GOOGLE_WEB_CLIENT_ID)
                 .requestEmail()
                 .requestProfile()
                 .build();
             GoogleSignInClient client = GoogleSignIn.getClient(this, gso);
-            Intent signInIntent = client.getSignInIntent();
-            startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
+            client.signOut().addOnCompleteListener(this, task -> {
+                try {
+                    Intent signInIntent = client.getSignInIntent();
+                    startActivityForResult(signInIntent, REQ_GOOGLE_SIGN_IN);
+                } catch (Exception e) {
+                    launchSystemAccountPickerFallback();
+                }
+            });
         } catch (Exception e) {
-            dispatchNativeGoogleSignInResult(null, "use_web_fallback");
+            launchSystemAccountPickerFallback();
+        }
+    }
+
+    /**
+     * Fallback using Android's built-in AccountManager picker when Play Services OAuth returns
+     * Status 10 (DEVELOPER_ERROR due to debug/sideloaded APK SHA-1 fingerprint).
+     * Never requires web login or hardcoded emails — reads the real selected Google account on device.
+     */
+    private void launchSystemAccountPickerFallback() {
+        try {
+            Intent pickerIntent = AccountManager.newChooseAccountIntent(
+                null,
+                null,
+                new String[] { "com.google" },
+                null,
+                null,
+                null,
+                null
+            );
+            startActivityForResult(pickerIntent, REQ_ACCOUNT_PICKER_FALLBACK);
+        } catch (Exception e) {
+            dispatchNativeGoogleSignInResult(null, "Erro ao abrir seletor de contas do Android.");
         }
     }
 
@@ -394,7 +426,7 @@ public class MainActivity extends BridgeActivity {
 
     public void requestSystemOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            if (Build.VERSION.SDK_INT >= 33) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 try {
                     Toast.makeText(
                         this,
@@ -403,24 +435,50 @@ public class MainActivity extends BridgeActivity {
                     ).show();
                 } catch (Exception ignored) {}
             }
-            try {
-                Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())
-                );
-                startActivityForResult(intent, REQ_OVERLAY_PERMISSION);
-                return;
-            } catch (Exception e) {
-                try {
-                    Intent fallback = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
-                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(fallback);
-                    return;
-                } catch (Exception ignored) {}
-            }
+            openManageOverlaySettingsScreen();
+            return;
         }
         startRealFloatingOverlayService(false);
         notifyWebViewPermissionsUpdated();
+    }
+
+    public void openManageOverlaySettingsScreen() {
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.fromParts("package", getPackageName(), null)
+            );
+            startActivityForResult(intent, REQ_OVERLAY_PERMISSION);
+        } catch (Exception e) {
+            try {
+                Intent fallback = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+                startActivityForResult(fallback, REQ_OVERLAY_PERMISSION);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public void showRestrictedPermissionGuideDialog() {
+        if (isFinishing() || isDestroyed()) return;
+        try {
+            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Desbloquear Permissão Restrita (Android 13+)")
+                .setMessage(
+                    "O Android bloqueia inicialmente a chave de sobreposição para apps instalados via APK.\n\n" +
+                    "Para liberar em 10 segundos:\n" +
+                    "1. Toque em 'Abrir Informações do App' abaixo.\n" +
+                    "2. Toque nos 3 pontinhos (⋮) no canto superior direito da tela.\n" +
+                    "3. Selecione 'Permitir configurações restritas' e confirme.\n" +
+                    "4. Volte para ativar 'Sobrepor a outros apps'."
+                )
+                .setPositiveButton("1. Abrir Informações do App (⋮)", (dialog, which) -> {
+                    openAppSystemSettings();
+                })
+                .setNeutralButton("2. Tentar Sobreposição", (dialog, which) -> {
+                    openManageOverlaySettingsScreen();
+                })
+                .setNegativeButton("Fechar", null)
+                .show();
+        } catch (Exception ignored) {}
     }
 
     public boolean startRealFloatingOverlayService(boolean expandNow) {
@@ -614,13 +672,25 @@ public class MainActivity extends BridgeActivity {
      */
     public void openAppSystemSettings() {
         try {
-            Intent intent = new Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:" + getPackageName())
-            );
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        } catch (Exception ignored) {}
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            Uri uri = Uri.fromParts("package", getPackageName(), null);
+            intent.setData(uri);
+            Toast.makeText(
+                this,
+                "No canto superior direito, toque nos 3 pontinhos (⋮) e selecione 'Permitir configurações restritas'.",
+                Toast.LENGTH_LONG
+            ).show();
+            startActivityForResult(intent, REQ_APP_DETAILS_SETTINGS);
+        } catch (Exception e) {
+            try {
+                Intent fallback = new Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getPackageName())
+                );
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(fallback);
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
@@ -653,8 +723,22 @@ public class MainActivity extends BridgeActivity {
         if (requestCode == REQ_OVERLAY_PERMISSION) {
             if (canDrawSystemOverlay()) {
                 startRealFloatingOverlayService(false);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                showRestrictedPermissionGuideDialog();
             }
             notifyWebViewPermissionsUpdated();
+        } else if (requestCode == REQ_APP_DETAILS_SETTINGS) {
+            if (canDrawSystemOverlay()) {
+                startRealFloatingOverlayService(false);
+                notifyWebViewPermissionsUpdated();
+            } else {
+                Toast.makeText(
+                    this,
+                    "Agora ative a chave 'Sobrepor a outros apps' para liberar a bolha flutuante.",
+                    Toast.LENGTH_LONG
+                ).show();
+                openManageOverlaySettingsScreen();
+            }
         } else if (requestCode == REQ_SCREEN_CAPTURE_RADAR) {
             if (resultCode == Activity.RESULT_OK && data != null && canDrawSystemOverlay()) {
                 try {
@@ -709,36 +793,13 @@ public class MainActivity extends BridgeActivity {
                 } catch (Throwable ignored) {}
             }
 
-            String extractedEmail = "";
-            String extractedName = "";
-            String extractedId = "";
-            String extractedPhoto = "";
-            String extractedIdToken = "";
-
             if (account != null && account.getEmail() != null && !account.getEmail().trim().isEmpty()) {
-                extractedEmail = account.getEmail().trim();
-                extractedName = account.getDisplayName() != null ? account.getDisplayName() : "";
-                extractedId = account.getId() != null ? account.getId() : "";
-                extractedPhoto = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
-                extractedIdToken = account.getIdToken() != null ? account.getIdToken() : "";
-            } else if (data != null && data.getExtras() != null) {
-                try {
-                    Bundle extras = data.getExtras();
-                    Pattern emailPattern = Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
-                    for (String key : extras.keySet()) {
-                        Object val = extras.get(key);
-                        if (val != null) {
-                            Matcher m = emailPattern.matcher(val.toString());
-                            if (m.find()) {
-                                extractedEmail = m.group(0).toLowerCase();
-                                break;
-                            }
-                        }
-                    }
-                } catch (Throwable ignored) {}
-            }
+                String extractedEmail = account.getEmail().trim();
+                String extractedName = account.getDisplayName() != null ? account.getDisplayName() : "";
+                String extractedId = account.getId() != null ? account.getId() : extractedEmail;
+                String extractedPhoto = account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "";
+                String extractedIdToken = account.getIdToken() != null ? account.getIdToken() : "";
 
-            if (!extractedEmail.isEmpty()) {
                 if (extractedName.isEmpty()) {
                     String prefix = extractedEmail.split("@")[0];
                     extractedName = prefix.substring(0, 1).toUpperCase() + (prefix.length() > 1 ? prefix.substring(1) : "");
@@ -748,32 +809,39 @@ public class MainActivity extends BridgeActivity {
                     res.put("idToken", extractedIdToken);
                     res.put("email", extractedEmail);
                     res.put("displayName", extractedName);
-                    res.put("googleId", !extractedId.isEmpty() ? extractedId : extractedEmail);
+                    res.put("googleId", extractedId);
                     res.put("photoUrl", extractedPhoto);
                     dispatchNativeGoogleSignInResult(res.toString(), null);
                 } catch (JSONException je) {
-                    dispatchNativeGoogleSignInResult(null, "explicit_cancel");
+                    dispatchNativeGoogleSignInResult(null, "Erro ao processar dados da conta Google.");
                 }
+            } else if (statusCode == 10 || statusCode == 12500) {
+                // Status 10 (DEVELOPER_ERROR): APK signature SHA-1 does not match OAuth client in GCP.
+                // Launch Android's system AccountPicker so the user's real device Google account is selected cleanly.
+                launchSystemAccountPickerFallback();
             } else {
-                // Only treat as explicit cancellation if user backed out without selecting an account (12501 or null intent with no status)
-                if (statusCode == 12501 || (resultCode == Activity.RESULT_CANCELED && data == null && statusCode == -1)) {
-                    dispatchNativeGoogleSignInResult(null, "explicit_cancel");
-                } else {
-                    // User selected an account from the native Android list (e.g., status 10 / 12500 on unsigned debug APK).
-                    // Complete login immediately as a native app without opening any web browser/popup!
+                dispatchNativeGoogleSignInResult(null, "explicit_cancel");
+            }
+        } else if (requestCode == REQ_ACCOUNT_PICKER_FALLBACK) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                String pickedEmail = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
+                if (pickedEmail != null && !pickedEmail.trim().isEmpty()) {
+                    String cleanEmail = pickedEmail.trim().toLowerCase();
+                    String prefix = cleanEmail.split("@")[0];
+                    String displayName = prefix.substring(0, 1).toUpperCase() + (prefix.length() > 1 ? prefix.substring(1) : "");
                     try {
                         JSONObject res = new JSONObject();
                         res.put("idToken", "");
-                        res.put("email", "gabrieulopezz@gmail.com");
-                        res.put("displayName", "Gabriel");
-                        res.put("googleId", "gabrieulopezz@gmail.com");
+                        res.put("email", cleanEmail);
+                        res.put("displayName", displayName);
+                        res.put("googleId", cleanEmail);
                         res.put("photoUrl", "");
                         dispatchNativeGoogleSignInResult(res.toString(), null);
-                    } catch (JSONException je) {
-                        dispatchNativeGoogleSignInResult(null, "explicit_cancel");
-                    }
+                        return;
+                    } catch (JSONException ignored) {}
                 }
             }
+            dispatchNativeGoogleSignInResult(null, "explicit_cancel");
         }
     }
 

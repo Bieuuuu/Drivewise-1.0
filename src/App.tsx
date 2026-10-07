@@ -31,11 +31,11 @@ import { isInstalledNativeOrPwaApp } from './utils/platformDetection';
 
 function DriveWiseApp() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [previewBypassAuth, setPreviewBypassAuth] = useState<boolean>(false);
   const isNativeOrInstalledApp = isInstalledNativeOrPwaApp();
 
   const [viewMode, setViewMode] = useState<'app' | 'landing'>(() => {
-    // CRITICAL: Inside the installed Android/iOS APK or installed PWA, NEVER show the landing page!
-    // Always open directly into the app flow (which shows Login/Register first, then the dashboard).
+    // Inside the installed Android/iOS APK or installed PWA, always show the app flow
     if (isInstalledNativeOrPwaApp()) {
       return 'app';
     }
@@ -43,28 +43,18 @@ function DriveWiseApp() {
     try {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
-        // Explicit query parameters
-        if (params.get('app') === 'true' || params.get('view') === 'app' || params.get('source') === 'pwa') {
-          return 'app';
-        }
         if (params.get('landing') === 'true' || params.get('page') === 'landing') {
           return 'landing';
         }
-
-        // Hash routing shortcuts
-        if (
-          window.location.hash.includes('painel') ||
-          window.location.hash.includes('dashboard') ||
-          window.location.hash.includes('app')
-        ) {
-          return 'app';
+        if (window.location.hash.includes('landing') || window.location.hash === '#inicio') {
+          return 'landing';
         }
       }
     } catch (e) {
       console.warn('ViewMode initial state determination warning:', e);
     }
-    // Default to the official public landing page only for standard web browser visitors
-    return 'landing';
+    // Default directly to the app view so the preview shows the application immediately
+    return 'app';
   });
 
   // Listen for hash changes on web browsers only
@@ -144,8 +134,8 @@ function DriveWiseApp() {
     );
   }
 
-  // 2. Authentication Screen: Inside the app, users must login/register first!
-  if (!firebaseUser) {
+  // 2. Authentication Screen: Inside the app, users must login/register first (or use preview mode on web)
+  if (!firebaseUser && !previewBypassAuth) {
     return (
       <AuthScreen
         onSuccess={() => {
@@ -153,6 +143,8 @@ function DriveWiseApp() {
             setIsOnboardingOpen(true);
           }
         }}
+        onEnterPreview={!isNativeOrInstalledApp ? () => setPreviewBypassAuth(true) : undefined}
+        onOpenLanding={!isNativeOrInstalledApp ? () => setViewMode('landing') : undefined}
       />
     );
   }

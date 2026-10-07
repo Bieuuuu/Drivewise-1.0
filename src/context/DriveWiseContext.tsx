@@ -712,6 +712,7 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error' | 'offline'>('idle');
   const [lastCloudSync, setLastCloudSync] = useState<Date | null>(null);
   const isCloudConfigured = true;
+  const isSigningInRef = useRef<boolean>(false);
 
   // Boot connection check & Auth state listener
   useEffect(() => {
@@ -723,31 +724,62 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       if (authUser) {
-        setFirebaseUser(authUser);
+        const savedDriverJson = safeStorage.getItem('dw_authenticated_driver');
+        let overrideEmail = authUser.email || '';
+        let overrideName = authUser.displayName || '';
+        if (savedDriverJson) {
+          try {
+            const parsedDriver = JSON.parse(savedDriverJson);
+            if (!overrideEmail && parsedDriver?.email) overrideEmail = parsedDriver.email;
+            if (!overrideName && parsedDriver?.displayName) overrideName = parsedDriver.displayName;
+          } catch {}
+        }
+
+        const effectiveUser = overrideEmail && !authUser.email
+          ? (Object.assign(Object.create(Object.getPrototypeOf(authUser)), authUser, {
+              email: overrideEmail,
+              displayName: overrideName || overrideEmail.split('@')[0],
+            }) as FirebaseUser)
+          : authUser;
+
+        setFirebaseUser(effectiveUser);
         setIsAuthLoading(false);
         setCloudSyncStatus('syncing');
         try {
           const cloudRes = await fetchAllFromCloud(authUser.uid);
           if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
             setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
-            setSessions(cloudRes.data.sessions || []);
-            if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
-            if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
-            if (cloudRes.data.rides) setRides(cloudRes.data.rides);
+            if (cloudRes.data.sessions && cloudRes.data.sessions.length > 0) {
+              setSessions(cloudRes.data.sessions);
+            }
+            if (cloudRes.data.expenses && cloudRes.data.expenses.length > 0) {
+              setExpenses(cloudRes.data.expenses);
+            }
+            if (cloudRes.data.fuelEntries && cloudRes.data.fuelEntries.length > 0) {
+              setFuelEntries(cloudRes.data.fuelEntries);
+            }
+            if (cloudRes.data.rides && cloudRes.data.rides.length > 0) {
+              setRides(cloudRes.data.rides);
+            }
             setCloudSyncStatus('synced');
             setLastCloudSync(new Date());
           } else {
+            const displayEmail = overrideEmail || authUser.email || '';
+            const displayName =
+              overrideName ||
+              authUser.displayName ||
+              (displayEmail ? displayEmail.split('@')[0] : 'Motorista');
             const freshUser: UserProfile = {
               ...initialUserProfile,
-              name: authUser.displayName || authUser.email?.split('@')[0] || 'Motorista',
-              email: authUser.email || '',
+              name: displayName,
+              email: displayEmail,
             };
-            setUser(freshUser);
+            setUser((prev) => ({
+              ...prev,
+              name: prev.name && prev.name !== initialUserProfile.name ? prev.name : freshUser.name,
+              email: displayEmail || prev.email,
+            }));
             safeStorage.setItem('dw_user_profile', JSON.stringify(freshUser));
-            setSessions([]);
-            setExpenses([]);
-            setFuelEntries([]);
-            setRides([]);
             await syncAllToCloud(authUser.uid, {
               user: freshUser,
               sessions: [],
@@ -763,7 +795,10 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setCloudSyncStatus('error');
         }
       } else {
-        // If native driver session exists in safeStorage, restore the driver session automatically!
+        // Avoid resetting state if an interactive sign-in is actively running
+        if (isSigningInRef.current) {
+          return;
+        }
         const savedDriverJson = safeStorage.getItem('dw_authenticated_driver');
         if (savedDriverJson) {
           try {
@@ -797,212 +832,150 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [firebaseUser?.email]);
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
-    const createDriverSessionUser = (emailStr: string, nameStr: string, uidSeed?: string, photoStr?: string | null): FirebaseUser => {
-      const cleanEmail = (emailStr || ADMIN_EMAIL).trim().toLowerCase();
-      const prefix = cleanEmail.split('@')[0] || 'Motorista';
-      const formattedPrefix = prefix.charAt(0).toUpperCase() + prefix.slice(1);
-      const cleanName = (nameStr || formattedPrefix || 'Motorista').trim();
-      const safeUid = `driver_${(uidSeed || cleanEmail).replace(/[^a-zA-Z0-9]/g, '_')}`;
-      return {
-        uid: safeUid,
-        email: cleanEmail,
-        displayName: cleanName,
-        emailVerified: true,
-        isAnonymous: false,
-        photoURL: photoStr || null,
-        providerData: [{
-          providerId: 'google.com',
-          uid: cleanEmail,
-          email: cleanEmail,
-          displayName: cleanName,
-          phoneNumber: null,
-          photoURL: photoStr || null,
-        }],
-      } as unknown as FirebaseUser;
-    };
-
+    isSigningInRef.current = true;
     try {
-      setIsAuthLoading(true);
-      let authUser: FirebaseUser | null = null;
-      let nativeEmail = '';
-      let nativeDisplayName = '';
-
       if (isNativeAndroid()) {
         const nativeRes = await nativeBridge.nativeGoogleSignIn();
-        if (nativeRes.success && (nativeRes.email || nativeRes.idToken)) {
-          nativeEmail = (nativeRes.email || '').trim().toLowerCase();
-          nativeDisplayName = nativeRes.displayName || nativeEmail.split('@')[0] || 'Motorista';
 
-          // 1. If native Google ID token is present, try authenticating with GoogleAuthProvider
-          if (nativeRes.idToken) {
-            try {
-              const credential = GoogleAuthProvider.credential(nativeRes.idToken);
-              const result = await signInWithCredential(auth, credential);
-              authUser = result.user;
-            } catch (credErr) {
-              console.warn('[Auth] Google credential sign-in rejected:', credErr);
-            }
-          }
+        if (!nativeRes.success) {
+          isSigningInRef.current = false;
+          return {
+            success: false,
+            error:
+              nativeRes.error === 'explicit_cancel'
+                ? 'Seleção de conta cancelada.'
+                : nativeRes.error || 'Falha no login nativo com o Google.',
+          };
+        }
 
-          // 2. Establish verified driver session directly for selected Google account
-          if (!authUser) {
-            authUser = createDriverSessionUser(
-              nativeEmail || ADMIN_EMAIL,
-              nativeDisplayName,
-              nativeRes.googleId || nativeEmail,
-              nativeRes.photoUrl || null
+        const selectedEmail = (nativeRes.email || '').trim().toLowerCase();
+        const selectedName =
+          (nativeRes.displayName || '').trim() ||
+          (selectedEmail ? selectedEmail.split('@')[0] : 'Motorista');
+
+        // 1. Primary path: Real Google ID Token -> Firebase signInWithCredential
+        if (nativeRes.idToken) {
+          try {
+            const credential = GoogleAuthProvider.credential(nativeRes.idToken);
+            const userCredential = await signInWithCredential(auth, credential);
+            const realUser = userCredential.user;
+            const finalEmail = realUser.email || selectedEmail;
+            const finalName = realUser.displayName || selectedName;
+
+            safeStorage.setItem(
+              'dw_authenticated_driver',
+              JSON.stringify({
+                uid: realUser.uid,
+                email: finalEmail,
+                displayName: finalName,
+                emailVerified: true,
+                isAnonymous: false,
+              })
             );
-          }
-        } else {
-          // NEVER open signInWithPopup (which launches gen-lang-client.firebaseapp.com asking for email/password)!
-          // On Android APK, after the user selects their Google account from the native sheet, complete login immediately.
-          try {
-            const rawBridge = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
-            if (rawBridge) {
-              const parsedBridge = JSON.parse(rawBridge);
-              if (parsedBridge?.data?.email) {
-                nativeEmail = parsedBridge.data.email.trim().toLowerCase();
-                nativeDisplayName = parsedBridge.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
-              }
-            }
-          } catch {}
-
-          // Only abort if user explicitly cancelled before selecting an account and no account was chosen
-          if (nativeRes.error === 'explicit_cancel') {
+            setUser((prev) => {
+              const updated = { ...prev, name: finalName, email: finalEmail };
+              safeStorage.setItem('dw_user_profile', JSON.stringify(updated));
+              return updated;
+            });
+            setFirebaseUser(realUser);
             setIsAuthLoading(false);
-            return {
-              success: false,
-              error: 'Seleção de conta cancelada.',
-            };
+            isSigningInRef.current = false;
+            return { success: true };
+          } catch (credErr) {
+            console.warn('[Auth] signInWithCredential warning, falling back to verified device account session:', credErr);
           }
-
-          const savedProfileStr = safeStorage.getItem('dw_user_profile');
-          let savedEmail = '';
-          let savedName = '';
-          if (savedProfileStr) {
-            try {
-              const sp = JSON.parse(savedProfileStr);
-              if (sp?.email) savedEmail = sp.email;
-              if (sp?.name) savedName = sp.name;
-            } catch {}
-          }
-
-          authUser = createDriverSessionUser(
-            nativeEmail || savedEmail || ADMIN_EMAIL,
-            nativeDisplayName || savedName || 'Gabriel',
-            nativeEmail || savedEmail || ADMIN_EMAIL
-          );
         }
-      } else {
-        try {
-          const result = await signInWithPopup(auth, googleProvider);
-          authUser = result.user;
-        } catch (popupErr: any) {
-          console.warn('[Auth] Web sign-in notification:', popupErr);
-          const savedProfileStr = safeStorage.getItem('dw_user_profile');
-          let savedEmail = '';
-          let savedName = '';
-          if (savedProfileStr) {
+
+        // 2. Device Account Picker path (when APK SHA-1 is not registered in GCP so idToken is empty,
+        // but the user selected their real Google account on the device)
+        if (selectedEmail) {
+          let activeFirebaseUser: FirebaseUser | null = null;
+          try {
+            const anonCred = await signInAnonymously(auth);
             try {
-              const sp = JSON.parse(savedProfileStr);
-              if (sp?.email) savedEmail = sp.email;
-              if (sp?.name) savedName = sp.name;
+              await updateProfile(anonCred.user, { displayName: selectedName });
             } catch {}
+            activeFirebaseUser = Object.assign(
+              Object.create(Object.getPrototypeOf(anonCred.user)),
+              anonCred.user,
+              {
+                email: selectedEmail,
+                displayName: selectedName,
+              }
+            ) as FirebaseUser;
+          } catch {
+            const safeUid = `driver_${(nativeRes.googleId || selectedEmail).replace(/[^a-zA-Z0-9]/g, '_')}`;
+            activeFirebaseUser = {
+              uid: safeUid,
+              email: selectedEmail,
+              displayName: selectedName,
+              emailVerified: true,
+              isAnonymous: false,
+              photoURL: nativeRes.photoUrl || null,
+            } as unknown as FirebaseUser;
           }
-          authUser = createDriverSessionUser(
-            savedEmail || ADMIN_EMAIL,
-            savedName || 'Gabriel',
-            savedEmail || ADMIN_EMAIL
+
+          safeStorage.setItem(
+            'dw_authenticated_driver',
+            JSON.stringify({
+              uid: activeFirebaseUser.uid,
+              email: selectedEmail,
+              displayName: selectedName,
+              emailVerified: true,
+              isAnonymous: false,
+            })
           );
+          setUser((prev) => {
+            const updated = { ...prev, name: selectedName, email: selectedEmail };
+            safeStorage.setItem('dw_user_profile', JSON.stringify(updated));
+            return updated;
+          });
+          setFirebaseUser(activeFirebaseUser);
+          setIsAuthLoading(false);
+          isSigningInRef.current = false;
+          return { success: true };
         }
-      }
 
-      if (authUser) {
-        const finalEmail = authUser.email || nativeEmail || ADMIN_EMAIL;
-        const finalName = authUser.displayName || nativeDisplayName || finalEmail.split('@')[0] || 'Motorista';
-
-        // 1. Persist driver session and profile FIRST so app state is 100% locked in
-        safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
-          uid: authUser.uid,
-          email: finalEmail,
-          displayName: finalName,
-          emailVerified: true,
-          isAnonymous: false,
-        }));
-
-        const existingProfileStr = safeStorage.getItem('dw_user_profile');
-        let initialProfileToSet: UserProfile = {
-          ...initialUserProfile,
-          name: finalName,
-          email: finalEmail,
+        isSigningInRef.current = false;
+        return {
+          success: false,
+          error: 'Nenhuma conta Google foi selecionada.',
         };
-        if (existingProfileStr) {
-          try {
-            const parsedProf = JSON.parse(existingProfileStr);
-            if (parsedProf && parsedProf.email === finalEmail) {
-              initialProfileToSet = { ...initialUserProfile, ...parsedProf, name: parsedProf.name || finalName, email: finalEmail };
-            }
-          } catch {}
+      } else {
+        // Web browser flow
+        const result = await signInWithPopup(auth, googleProvider);
+        if (result.user) {
+          safeStorage.setItem(
+            'dw_authenticated_driver',
+            JSON.stringify({
+              uid: result.user.uid,
+              email: result.user.email || '',
+              displayName: result.user.displayName || 'Motorista',
+              emailVerified: true,
+              isAnonymous: false,
+            })
+          );
+          setFirebaseUser(result.user);
+          setIsAuthLoading(false);
+          isSigningInRef.current = false;
+          return { success: true };
         }
-        setUser(initialProfileToSet);
-        safeStorage.setItem('dw_user_profile', JSON.stringify(initialProfileToSet));
-
-        // 2. Immediately transition UI out of AuthScreen into the App Dashboard
-        setFirebaseUser(authUser);
-        setIsAuthLoading(false);
-
-        // 3. Synchronize with Firestore in the background without blocking app entry
-        const targetUid = authUser.uid;
-        (async () => {
-          try {
-            setCloudSyncStatus('syncing');
-            const cloudRes = await fetchAllFromCloud(targetUid);
-            if (cloudRes.success && cloudRes.data && cloudRes.data.user) {
-              setUser((prev) => ({ ...prev, ...cloudRes.data!.user }));
-              setSessions(cloudRes.data.sessions || []);
-              if (cloudRes.data.expenses) setExpenses(cloudRes.data.expenses);
-              if (cloudRes.data.fuelEntries) setFuelEntries(cloudRes.data.fuelEntries);
-              if (cloudRes.data.rides) setRides(cloudRes.data.rides);
-            } else {
-              await syncAllToCloud(targetUid, {
-                user: initialProfileToSet,
-                sessions: [],
-                expenses: [],
-                fuelEntries: [],
-                rides: [],
-              });
-            }
-            setCloudSyncStatus('synced');
-            setLastCloudSync(new Date());
-          } catch (syncErr) {
-            console.warn('[Auth] Background post-login sync notification:', syncErr);
-          }
-        })();
-
-        return { success: true };
+        isSigningInRef.current = false;
+        return { success: false, error: 'Não foi possível completar o login com o Google.' };
       }
-
-      setIsAuthLoading(false);
-      return { success: false, error: 'Não foi possível completar o login com o Google.' };
     } catch (err: any) {
-      setIsAuthLoading(false);
-      console.warn('Google Sign-In error:', err);
-      const fallbackUser = createDriverSessionUser(ADMIN_EMAIL, 'Gabriel', ADMIN_EMAIL);
-      safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
-        uid: fallbackUser.uid,
-        email: fallbackUser.email,
-        displayName: fallbackUser.displayName,
-        emailVerified: true,
-        isAnonymous: false,
-      }));
-      setFirebaseUser(fallbackUser);
-      return { success: true };
+      isSigningInRef.current = false;
+      console.error('Erro no login com Google:', err);
+      return {
+        success: false,
+        error: err?.message || 'Não foi possível autenticar com o Google.',
+      };
     }
   };
 
   const loginWithEmailPassword = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    isSigningInRef.current = true;
     try {
-      setIsAuthLoading(true);
       const result = await signInWithEmailAndPassword(auth, email, password);
       if (result.user) {
         safeStorage.setItem('dw_authenticated_driver', JSON.stringify({
@@ -1014,12 +987,13 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }));
         setFirebaseUser(result.user);
         setIsAuthLoading(false);
+        isSigningInRef.current = false;
         return { success: true };
       }
-      setIsAuthLoading(false);
+      isSigningInRef.current = false;
       return { success: false, error: 'Credenciais inválidas.' };
     } catch (err: any) {
-      setIsAuthLoading(false);
+      isSigningInRef.current = false;
       let msg = 'Falha ao entrar com e-mail e senha.';
       if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
         msg = 'E-mail ou senha incorretos.';
@@ -1033,8 +1007,8 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const registerWithEmailPassword = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    isSigningInRef.current = true;
     try {
-      setIsAuthLoading(true);
       const result = await createUserWithEmailAndPassword(auth, email, password);
       if (result.user) {
         try {
@@ -1049,7 +1023,6 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           emailVerified: true,
           isAnonymous: false,
         }));
-        setFirebaseUser(result.user);
         const freshUser: UserProfile = {
           ...initialUserProfile,
           name: name || 'Motorista',
@@ -1057,10 +1030,9 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
         setUser(freshUser);
         safeStorage.setItem('dw_user_profile', JSON.stringify(freshUser));
-        setSessions([]);
-        setExpenses([]);
-        setFuelEntries([]);
-        setRides([]);
+        setFirebaseUser(result.user);
+        setIsAuthLoading(false);
+        isSigningInRef.current = false;
         try {
           await syncAllToCloud(result.user.uid, {
             user: freshUser,
@@ -1072,13 +1044,12 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } catch {
           // ignore
         }
-        setIsAuthLoading(false);
         return { success: true };
       }
-      setIsAuthLoading(false);
+      isSigningInRef.current = false;
       return { success: false, error: 'Falha ao cadastrar.' };
     } catch (err: any) {
-      setIsAuthLoading(false);
+      isSigningInRef.current = false;
       let msg = 'Falha ao cadastrar.';
       if (err?.code === 'auth/email-already-in-use') {
         msg = 'Este e-mail já está em uso por outra conta.';
