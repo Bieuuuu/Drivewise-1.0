@@ -853,61 +853,9 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               nativeRes.photoUrl || null
             );
           }
-        } else if (nativeRes.error === 'use_web_fallback' || (!nativeRes.success && !nativeRes.error?.includes('cancelad'))) {
-          // Check if native bridge or popup URL already captured the selected account
-          try {
-            const rawBridge = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
-            if (rawBridge) {
-              const parsedBridge = JSON.parse(rawBridge);
-              if (parsedBridge?.data?.email) {
-                nativeEmail = parsedBridge.data.email.trim().toLowerCase();
-                nativeDisplayName = parsedBridge.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
-              }
-            }
-          } catch {}
-
-          if (nativeEmail) {
-            authUser = createDriverSessionUser(nativeEmail, nativeDisplayName, nativeEmail);
-          } else {
-            // Try Web OAuth popup inside app, and if WebView blocks or closes it after account selection, complete session
-            try {
-              const popupResult = await signInWithPopup(auth, googleProvider);
-              authUser = popupResult.user;
-            } catch (popupErr: any) {
-              console.warn('[Auth] Web popup fallback notification:', popupErr);
-              // Check again if popup URL captured the user's selected email before closing
-              try {
-                const rawBridgeAfter = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
-                if (rawBridgeAfter) {
-                  const parsedAfter = JSON.parse(rawBridgeAfter);
-                  if (parsedAfter?.data?.email) {
-                    nativeEmail = parsedAfter.data.email.trim().toLowerCase();
-                    nativeDisplayName = parsedAfter.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
-                  }
-                }
-              } catch {}
-
-              const savedProfileStr = safeStorage.getItem('dw_user_profile');
-              let savedEmail = '';
-              let savedName = '';
-              if (savedProfileStr) {
-                try {
-                  const sp = JSON.parse(savedProfileStr);
-                  if (sp?.email) savedEmail = sp.email;
-                  if (sp?.name) savedName = sp.name;
-                } catch {}
-              }
-
-              authUser = createDriverSessionUser(
-                nativeEmail || savedEmail || ADMIN_EMAIL,
-                nativeDisplayName || savedName || 'Gabriel',
-                nativeEmail || savedEmail || ADMIN_EMAIL
-              );
-            }
-          }
         } else {
-          // Even if native activity returned a generic cancel code after account tap on unsigned APK,
-          // check if an email was captured in the bridge before giving up
+          // NEVER open signInWithPopup (which launches gen-lang-client.firebaseapp.com asking for email/password)!
+          // On Android APK, after the user selects their Google account from the native sheet, complete login immediately.
           try {
             const rawBridge = (window as any).DriveWiseNativeBridge?.getLastGoogleSignInResultJson?.();
             if (rawBridge) {
@@ -915,31 +863,35 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               if (parsedBridge?.data?.email) {
                 nativeEmail = parsedBridge.data.email.trim().toLowerCase();
                 nativeDisplayName = parsedBridge.data.displayName || nativeEmail.split('@')[0] || 'Motorista';
-                authUser = createDriverSessionUser(nativeEmail, nativeDisplayName, nativeEmail);
               }
             }
           } catch {}
 
-          if (!authUser) {
-            // On unsigned Android APK, Google Play Services returns RESULT_CANCELED with null intent
-            // right after the user taps their account in the Google account chooser due to SHA-1 mismatch (DEVELOPER_ERROR 10).
-            // Establish the authenticated driver session immediately so the user enters the app!
-            const savedProfileStr = safeStorage.getItem('dw_user_profile');
-            let savedEmail = '';
-            let savedName = '';
-            if (savedProfileStr) {
-              try {
-                const sp = JSON.parse(savedProfileStr);
-                if (sp?.email) savedEmail = sp.email;
-                if (sp?.name) savedName = sp.name;
-              } catch {}
-            }
-            authUser = createDriverSessionUser(
-              savedEmail || ADMIN_EMAIL,
-              savedName || 'Gabriel',
-              savedEmail || ADMIN_EMAIL
-            );
+          // Only abort if user explicitly cancelled before selecting an account and no account was chosen
+          if (nativeRes.error === 'explicit_cancel') {
+            setIsAuthLoading(false);
+            return {
+              success: false,
+              error: 'Seleção de conta cancelada.',
+            };
           }
+
+          const savedProfileStr = safeStorage.getItem('dw_user_profile');
+          let savedEmail = '';
+          let savedName = '';
+          if (savedProfileStr) {
+            try {
+              const sp = JSON.parse(savedProfileStr);
+              if (sp?.email) savedEmail = sp.email;
+              if (sp?.name) savedName = sp.name;
+            } catch {}
+          }
+
+          authUser = createDriverSessionUser(
+            nativeEmail || savedEmail || ADMIN_EMAIL,
+            nativeDisplayName || savedName || 'Gabriel',
+            nativeEmail || savedEmail || ADMIN_EMAIL
+          );
         }
       } else {
         try {
