@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="100"
+    android:packageNames="com.ubercab.driver,com.taxis99,com.didiglobal.driver,com.99taxis,sinet.startup.inDriver"
+    android:summary="Monitora corridas da Uber, 99 e InDrive para exibir lucro real e permitir aceitar/recusar."
+    android:description="Acessibilidade necessária para o DriveWise Copiloto ler a tela da Uber, 99 e InDrive, calcular o lucro líquido em tempo real e permitir aceitar ou recusar corridas diretamente." />

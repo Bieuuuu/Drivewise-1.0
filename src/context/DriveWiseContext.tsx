@@ -1701,6 +1701,112 @@ export const DriveWiseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     creditRideEarningsToToday,
   ]);
 
+  // LISTENER DE EVENTOS NATIVOS DO JAVA (Acessibilidade - drivewise:ride-event)
+  useEffect(() => {
+    const handleNativeRideEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        platform?: string;
+        gross?: number;
+        pickupDist?: number;
+        tripDist?: number;
+        pickupTime?: number;
+        tripTime?: number;
+      }>;
+      const rideData = customEvent.detail;
+      if (!rideData) return;
+
+      const rawPlatform = rideData.platform || 'Uber';
+      const platform: RideOpportunity['platform'] =
+        rawPlatform === '99' ? '99' : rawPlatform === 'InDrive' ? 'InDrive' : 'Uber';
+
+      const gross = Number(rideData.gross || 0);
+      const pickupDist = Number(rideData.pickupDist || 0);
+      const tripDist = Number(rideData.tripDist || 0);
+      const pickupTime = Number(rideData.pickupTime || 0);
+      const tripTime = Number(rideData.tripTime || 0);
+
+      if (gross <= 0 && tripDist <= 0) return;
+
+      const evaluated = evaluateRideOpportunity(
+        {
+          platform,
+          offeredValue: gross,
+          distanceToPassengerKm: pickupDist,
+          estimatedTripDistanceKm: tripDist,
+          estimatedTimeToPassengerMin: pickupTime,
+          estimatedTripTimeMin: tripTime,
+          surgeMultiplier: 1.0,
+          extraCosts: 0,
+          pickupAddress: `Corrida ${platform}`,
+          dropoffAddress: `${(pickupDist + tripDist).toFixed(1)} km totais • ${pickupTime + tripTime} min`,
+        },
+        decisionRules,
+        activeVehicleProfile,
+        0,
+        user.dailyGoal || 400
+      );
+
+      const now = new Date().toISOString();
+      const evaluatedRide: RideOpportunity = {
+        id: `ride-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        userId: user.email || 'user-1',
+        workSessionId: activeSession?.id,
+        platform,
+        status: 'received',
+        offeredValue: gross,
+        distanceToPassengerKm: pickupDist,
+        estimatedTripDistanceKm: tripDist,
+        estimatedTimeToPassengerMin: pickupTime,
+        estimatedTripTimeMin: tripTime,
+        surgeMultiplier: 1.0,
+        extraCosts: 0,
+        estimatedProfit: evaluated.netProfit,
+        netProfit: evaluated.netProfit,
+        grossPerKm: evaluated.grossPerKm,
+        netPerKm: evaluated.netPerKm,
+        grossPerHour: evaluated.grossPerHour,
+        netPerHour: evaluated.netPerHour,
+        deadheadPercent: evaluated.deadheadPercent,
+        score: evaluated.score,
+        scoreTier: evaluated.scoreTier,
+        scoreReason: evaluated.scoreReason,
+        recommendation: evaluated.recommendation,
+        ruleAlerts: evaluated.ruleAlerts,
+        pickupAddress: `Corrida ${platform} (${(pickupDist + tripDist).toFixed(1)} km)`,
+        dropoffAddress: `Lucro líq. R$ ${evaluated.netProfit.toFixed(2)} (${pickupTime + tripTime} min)`,
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      setRides((prev) => [evaluatedRide, ...prev]);
+      setLastAnalyzedRide(evaluatedRide);
+      updateOverlayPref({ isExpanded: true });
+
+      if (isNativeAndroid() && nativeBridge?.updateOverlayData) {
+        nativeBridge
+          .updateOverlayData({
+            platform: evaluatedRide.platform,
+            grossValue: evaluatedRide.offeredValue,
+            distanceKm: evaluatedRide.distanceToPassengerKm + evaluatedRide.estimatedTripDistanceKm,
+            durationMin: evaluatedRide.estimatedTimeToPassengerMin + evaluatedRide.estimatedTripTimeMin,
+            netProfit: evaluatedRide.netProfit,
+            profitPerKm: evaluatedRide.netPerKm,
+            hourlyRate: evaluatedRide.netPerHour,
+            score: evaluatedRide.score,
+            recommendation: evaluatedRide.scoreTier,
+            expand: true,
+          })
+          .catch(() => {});
+      }
+    };
+
+    window.addEventListener('drivewise:ride-event', handleNativeRideEvent);
+    return () => {
+      window.removeEventListener('drivewise:ride-event', handleNativeRideEvent);
+    };
+  }, [activeVehicleProfile, decisionRules, user.email, user.dailyGoal, activeSession?.id]);
+
   // Listen for background GPS distance accumulated by FloatingOverlayService while driver is on Uber/99
   useEffect(() => {
     const handleNativeGpsDelta = (event: Event) => {
